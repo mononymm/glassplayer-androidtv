@@ -37,7 +37,8 @@ jobs:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/glass.jks"
+            printf %s "$KEYSTORE_B64" | tr -d " \r\n\t\"" | base64 -d > "$RUNNER_TEMP/glass.jks"
+            echo "Keystore bytes: $(wc -c < "$RUNNER_TEMP/glass.jks") (expected 4230)"
             echo "file=$RUNNER_TEMP/glass.jks" >> "$GITHUB_OUTPUT"
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
