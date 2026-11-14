@@ -169,7 +169,13 @@ fun HomeScreen() {
  */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 150, content: @Composable () -> Unit) {
+fun BrowseFrame(
+    tab: String,
+    hero: Item?,
+    heroHeight: Int = 150,
+    headerCenter: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     val app = LocalApp.current
     var railOpen by remember { mutableStateOf(false) }
     val contentReq = remember { FocusRequester() }
@@ -190,7 +196,7 @@ fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 150, content: @Compo
         Box(Modifier.fillMaxSize().background(scrimLeft))
         Box(Modifier.fillMaxSize().background(scrimBottom))
         Column(Modifier.fillMaxSize()) {
-            Header()
+            Header(center = headerCenter)
             if (heroHeight > 0) HeroInfo(hero, Modifier.height(heroHeight.dp))
             Box(
                 Modifier.weight(1f).clipToBounds()

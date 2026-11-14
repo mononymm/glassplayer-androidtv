@@ -2,6 +2,7 @@ package com.mononymm.glasstv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,14 +39,15 @@ const val WIDE_W = 248
 const val WIDE_H = 140
 
 @Composable
-fun PosterCard(item: Item, onFocus: (Item) -> Unit, modifier: Modifier = Modifier) {
+fun PosterCard(item: Item, onFocus: (Item) -> Unit, modifier: Modifier = Modifier, fill: Boolean = false) {
     val app = LocalApp.current
     var menu by remember { mutableStateOf(false) }
-    Column(modifier.width(POSTER_W.dp)) {
+    // fill: take the grid cell's width (2:3 poster) instead of the fixed size.
+    Column(if (fill) modifier.fillMaxWidth() else modifier.width(POSTER_W.dp)) {
         FocusBox(
             onClick = { open(app, item) },
             onLongClick = { menu = true },
-            modifier = Modifier.size(POSTER_W.dp, POSTER_H.dp),
+            modifier = if (fill) Modifier.fillMaxWidth().aspectRatio(2f / 3f) else Modifier.size(POSTER_W.dp, POSTER_H.dp),
             onFocus = { onFocus(item) },
         ) { _ ->
             NetImage(app.plex.image(item.poster, 300, 450), Modifier.fillMaxSize())

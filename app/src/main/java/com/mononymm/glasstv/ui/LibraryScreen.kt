@@ -60,7 +60,7 @@ fun LibraryScreen(section: Section) {
     var items by remember(cacheKey) { mutableStateOf(app.cached<List<Item>>(cacheKey)) }
     var hero by remember { mutableStateOf<Item?>(null) }
     var engine by remember { mutableStateOf(app.prefs.engineForLibrary(section.key)) }
-    val firstSort = remember { FocusRequester() }
+    val firstItem = remember { FocusRequester() }
     val grid = rememberLazyGridState()
     var focusedIdx by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -71,35 +71,33 @@ fun LibraryScreen(section: Section) {
             app.cache[cacheKey] = it
         }
     }
-    LaunchedEffect(Unit) { firstSort.focusSoon() }
+    LaunchedEffect(items?.isNotEmpty() == true) { if (items?.isNotEmpty() == true) firstItem.focusSoon() }
 
-    BrowseFrame(tab = section.key, hero = hero, heroHeight = 150) {
+    var sortMenu by remember { mutableStateOf(false) }
+    // No info area here: two full rows of posters. Sort and Player sit in the top strip.
+    BrowseFrame(tab = section.key, hero = hero, heroHeight = 0, headerCenter = {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Pill("Sort: ${sorts.first { it.second == sort }.first}  ⌄", { sortMenu = true })
+            Pill("Player: ${engine.label}", {
+                val n = EngineChoice.entries[(engine.ordinal + 1) % EngineChoice.entries.size]
+                app.prefs.setEngineForLibrary(section.key, n)
+                engine = n
+            })
+            Text(items?.let { "  ${it.size} titles" } ?: "  Loading…", style = G.small)
+        }
+    }) {
+        if (sortMenu) {
+            GlassMenu("Sort by", sorts.map { (label, key) -> MenuEntry(label, checked = sort == key) { sort = key } }) { sortMenu = false }
+        }
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.padding(start = EDGE, bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                sorts.forEachIndexed { i, (label, key) ->
-                    Pill(label, { sort = key }, Modifier.let { if (i == 0) it.focusRequester(firstSort) else it }, selected = sort == key)
-                }
-                Spacer(Modifier.width(18.dp))
-                Pill("Player: ${engine.label}", {
-                    val n = EngineChoice.entries[(engine.ordinal + 1) % EngineChoice.entries.size]
-                    app.prefs.setEngineForLibrary(section.key, n)
-                    engine = n
-                })
-                Spacer(Modifier.width(12.dp))
-                Text(items?.let { "${it.size} titles" } ?: "Loading…", style = G.small)
-            }
             val list = items ?: emptyList()
             Box(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(POSTER_W.dp),
+                columns = GridCells.Fixed(6),
                 // No top padding: each cell carries its own, so every row sits at the same spot
                 // when it snaps up (the first row used to sit 18dp lower than the rest).
                 contentPadding = PaddingValues(start = EDGE, end = EDGE, top = 0.dp, bottom = 48.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 state = grid,
                 modifier = Modifier.fillMaxSize(),
@@ -110,14 +108,14 @@ fun LibraryScreen(section: Section) {
                         hero = f
                         focusedIdx = i
                         scope.launch { grid.animateScrollToItem(i) }
-                    }, Modifier.padding(top = 10.dp))
+                    }, Modifier.padding(top = 8.dp).let { m -> if (i == 0) m.focusRequester(firstItem) else m }, fill = true)
                 }
             }
             if (list.size > 1) {
                 ScrollBar(
                     frac = focusedIdx.toFloat() / (list.size - 1),
                     letter = if (sort == sorts[0].second) letterOf(list.getOrNull(focusedIdx)) else null,
-                    modifier = Modifier.align(Alignment.TopEnd).fillMaxHeight().width(EDGE).padding(top = 12.dp, bottom = 28.dp),
+                    modifier = Modifier.align(Alignment.TopEnd).fillMaxHeight().width(EDGE).padding(top = 10.dp, bottom = 20.dp),
                 )
             }
             }

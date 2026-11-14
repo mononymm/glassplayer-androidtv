@@ -27,6 +27,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,9 +65,10 @@ private val RAIL_OPEN = 248.dp
 
 /** Top strip: logo over the rail column, date and time mirrored at the right. Nothing focusable. */
 @Composable
-fun Header(modifier: Modifier = Modifier) {
+fun Header(modifier: Modifier = Modifier, center: (@Composable () -> Unit)? = null) {
     Box(modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 4.dp).height(40.dp)) {
         Logo(Modifier.align(Alignment.CenterStart).size(28.dp))
+        center?.let { Box(Modifier.align(Alignment.Center)) { it() } }
         Clock(Modifier.align(Alignment.CenterEnd))
     }
 }
@@ -223,8 +225,9 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(if (open) 6.dp else 0.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TopButton(RailIcon.SETTINGS, "Settings", open, Modifier.weight(1f), onFocus = { top = it }, key = "settings",
-                    onClick = { if (selected != "settings") app.go(Screen.Settings) else close() })
+                // Settings: a round button. Search: a long pill, like a search field.
+                TopButton(RailIcon.SETTINGS, "Settings", open, if (open) Modifier.size(38.dp) else Modifier.weight(1f), onFocus = { top = it }, key = "settings",
+                    round = true, onClick = { if (selected != "settings") app.go(Screen.Settings) else close() })
                 TopButton(RailIcon.SEARCH, "Search", open, Modifier.weight(1f).focusRequester(searchReq), onFocus = { top = it }, key = "search",
                     onClick = { if (selected != "search") app.go(Screen.Search) else close() })
             }
@@ -274,15 +277,15 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
 }
 
 @Composable
-private fun TopButton(icon: RailIcon, label: String, open: Boolean, modifier: Modifier, key: String, onFocus: (String?) -> Unit, onClick: () -> Unit) {
+private fun TopButton(icon: RailIcon, label: String, open: Boolean, modifier: Modifier, key: String, onFocus: (String?) -> Unit, round: Boolean = false, onClick: () -> Unit) {
     FocusBox(
         onClick = onClick,
         modifier = modifier.fillMaxHeight(),
-        shape = G.pillShape,
-        focusScale = 1.03f,
+        shape = if (round) CircleShape else G.pillShape,
+        focusScale = 1.04f,
         idleColor = if (open) Color(0x14FFFFFF) else Color.Transparent,
         focusColor = Color(0xF2F4F4F6),
-        idleRim = Color.Transparent,
+        idleRim = if (open && !round) Color(0x24FFFFFF) else Color.Transparent,
         glow = false,
         focusEnabled = open,
         onFocus = { onFocus(key) },
@@ -292,11 +295,15 @@ private fun TopButton(icon: RailIcon, label: String, open: Boolean, modifier: Mo
             open -> G.dim
             else -> Color(0x78F4F4F6)
         }
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Row(
+            Modifier.fillMaxSize().padding(start = if (open && !round) 16.dp else 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (open && !round) Arrangement.Start else Arrangement.Center,
+        ) {
             Canvas(Modifier.size(if (open) 18.dp else 16.dp)) { drawRailIcon(icon, c) }
-            if (open) {
-                Spacer(Modifier.width(8.dp))
-                Text(label, style = G.label.copy(color = c), maxLines = 1)
+            if (open && !round) {
+                Spacer(Modifier.width(10.dp))
+                Text(label, style = G.label.copy(color = c), maxLines = 1, modifier = Modifier.weight(1f))
             }
         }
     }
