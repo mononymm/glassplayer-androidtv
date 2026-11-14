@@ -37,7 +37,9 @@ jobs:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            printf %s "$KEYSTORE_B64" | tr -d " \r\n\t\"" | base64 -d > "$RUNNER_TEMP/glass.jks"
+            CLEAN=$(printf %s "$KEYSTORE_B64" | tr -d " \r\n\t\"")
+            echo "Secret length after cleanup: ${#CLEAN} (expected 5640); characters that aren't base64: $(printf %s "$CLEAN" | tr -d 'A-Za-z0-9+/=' | wc -c)"
+            printf %s "$CLEAN" | base64 -d > "$RUNNER_TEMP/glass.jks"
             echo "Keystore bytes: $(wc -c < "$RUNNER_TEMP/glass.jks") (expected 4230)"
             echo "file=$RUNNER_TEMP/glass.jks" >> "$GITHUB_OUTPUT"
             echo "signed=true" >> "$GITHUB_OUTPUT"
