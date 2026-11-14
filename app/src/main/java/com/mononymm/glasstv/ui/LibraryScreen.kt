@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +48,8 @@ fun LibraryScreen(section: Section) {
     var hero by remember { mutableStateOf<Item?>(null) }
     var engine by remember { mutableStateOf(app.prefs.engineForLibrary(section.key)) }
     val firstSort = remember { FocusRequester() }
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(cacheKey, app.refresh) {
         runCatching { app.plex.library(section, sort) }.onSuccess {
@@ -79,9 +84,16 @@ fun LibraryScreen(section: Section) {
                 contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
+                state = grid,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(list, key = { it.ratingKey }) { PosterCard(it, { f -> hero = f }) }
+                // Each row of posters snaps to the top of the grid, titles included.
+                itemsIndexed(list, key = { _, it -> it.ratingKey }) { i, it ->
+                    PosterCard(it, { f ->
+                        hero = f
+                        scope.launch { grid.animateScrollToItem(i) }
+                    })
+                }
             }
         }
     }

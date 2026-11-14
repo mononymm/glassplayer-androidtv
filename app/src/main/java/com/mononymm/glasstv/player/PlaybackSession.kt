@@ -8,6 +8,7 @@ import com.mononymm.glasstv.plex.EngineChoice
 import com.mononymm.glasstv.plex.Item
 import com.mononymm.glasstv.plex.MediaInfo
 import com.mononymm.glasstv.plex.Plex
+import com.mononymm.glasstv.plex.SubResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -138,6 +139,27 @@ class PlaybackSession(
     private suspend fun report(state: String, pos: Long, dur: Long) {
         val it = item
         withContext(Dispatchers.IO) { runCatching { plex.timeline(it, state, pos, dur) } }
+    }
+
+    suspend fun searchSubtitles(lang: String): List<SubResult> = plex.searchSubtitles(item.ratingKey, lang)
+
+    /** Has Plex download [r], then adds it to the player and switches to it. */
+    suspend fun downloadSubtitle(r: SubResult): Boolean {
+        val key = item.ratingKey
+        val before = info?.subs?.map { it.id }?.toSet() ?: emptySet()
+        if (!plex.addSubtitle(key, r)) return false
+        // The server attaches it a moment later; check a few times.
+        repeat(8) {
+            val mi = runCatching { plex.mediaInfo(key) }.getOrNull()
+            val added = mi?.subs?.firstOrNull { it.external && it.key != null && it.id !in before }
+            if (mi != null && added != null) {
+                info = mi
+                engine?.addSub(ExternalSub(plex.subtitleUrl(added.key!!), added.codec, added.title, added.language))
+                return true
+            }
+            delay(750)
+        }
+        return false
     }
 
     fun switchEngine() {

@@ -2,7 +2,19 @@ package com.mononymm.glasstv.ui
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +60,8 @@ fun HomeScreen() {
     var hero by remember { mutableStateOf<Item?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val firstRow = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(app.refresh) {
         val loaded = runCatching {
@@ -86,11 +100,18 @@ fun HomeScreen() {
                 }
             }
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
+        // The focused row snaps to the top of the list so its titles are never cut off,
+        // and the row above is scrolled fully out of view.
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 240.dp)) {
             items(rows.size, key = { rows[it].title }) { i ->
                 val r = rows[i]
                 Box(if (i == 0) Modifier.focusRequester(firstRow) else Modifier) {
-                    ItemRow(r.title, r.items, r.wide) { hero = it }
+                    ItemRow(r.title, r.items, r.wide) {
+                        hero = it
+                        if (listState.firstVisibleItemIndex != i || listState.firstVisibleItemScrollOffset != 0) {
+                            scope.launch { listState.animateScrollToItem(i) }
+                        }
+                    }
                 }
             }
         }
@@ -102,7 +123,7 @@ fun HomeScreen() {
  * and info in the upper area, and [content] below.
  */
 @Composable
-fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 210, content: @Composable () -> Unit) {
+fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 170, content: @Composable () -> Unit) {
     val app = LocalApp.current
     Box(Modifier.fillMaxSize()) {
         Crossfade(hero?.let { it.backdrop ?: it.thumb }, animationSpec = tween(400), label = "backdrop") { art ->
@@ -122,7 +143,14 @@ fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 210, content: @Compo
         Column(Modifier.fillMaxSize()) {
             TabBar(tab)
             if (heroHeight > 0) HeroInfo(hero, Modifier.height(heroHeight.dp))
-            Box(Modifier.weight(1f)) { content() }
+            Box(Modifier.weight(1f).clipToBounds()) {
+                content()
+                // The row below fades into the bottom edge instead of being cut off hard.
+                Box(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, G.bg))),
+                )
+            }
         }
     }
 }
@@ -145,7 +173,7 @@ fun HeroInfo(item: Item?, modifier: Modifier = Modifier) {
         }
         MetaLine(item)
         Spacer(Modifier.height(8.dp))
-        Text(item.summary ?: "", style = G.body, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(item.summary ?: "", style = G.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -155,27 +183,89 @@ fun TabBar(selected: String) {
     LaunchedEffect(Unit) {
         if (app.sections.isEmpty()) runCatching { app.sections = app.plex.sections() }
     }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 40.dp, end = 40.dp, top = 20.dp, bottom = 6.dp).heightIn(min = 40.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Logo(Modifier.padding(start = 8.dp, end = 18.dp).size(34.dp))
-        LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item(key = "home") {
-                Pill("Home", { if (selected != "home") app.replaceAll(Screen.Home) }, selected = selected == "home")
-            }
-            items(app.sections, key = { it.key }) { s: Section ->
-                Pill(s.title, {
+    // Logo at the left inset, tabs in one capsule centred on screen, Search and Settings as
+    // round icons at the right inset. Nothing scrolls, so nothing slides under anything.
+    Box(Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 6.dp).height(44.dp)) {
+        Logo(Modifier.align(Alignment.CenterStart).size(34.dp))
+        Row(
+            Modifier.align(Alignment.Center)
+                .background(Color(0x1AFFFFFF), G.pillShape)
+                .border(1.dp, Color(0x28FFFFFF), G.pillShape)
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TabPill("Home", selected == "home") { if (selected != "home") app.replaceAll(Screen.Home) }
+            app.sections.forEach { s: Section ->
+                TabPill(s.title, selected == s.key) {
                     if (selected != s.key) {
                         app.replaceAll(Screen.Home)
                         app.go(Screen.Library(s))
                     }
-                }, selected = selected == s.key)
+                }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill("Search", { if (selected != "search") app.go(Screen.Search) }, selected = selected == "search")
-            Pill("Settings", { if (selected != "settings") app.go(Screen.Settings) }, selected = selected == "settings")
+        Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RoundIcon(selected == "search", { if (selected != "search") app.go(Screen.Search) }) { c -> SearchIcon(c) }
+            RoundIcon(selected == "settings", { if (selected != "settings") app.go(Screen.Settings) }) { c -> GearIcon(c) }
         }
+    }
+}
+
+@Composable
+private fun TabPill(text: String, selected: Boolean, onClick: () -> Unit) {
+    FocusBox(
+        onClick = onClick,
+        shape = G.pillShape,
+        focusScale = 1.06f,
+        idleColor = if (selected) Color(0x40FFFFFF) else Color.Transparent,
+        focusColor = Color(0xF2F4F4F6),
+        idleRim = Color.Transparent,
+        glow = false,
+    ) { f ->
+        Text(
+            text,
+            style = G.label.copy(color = if (f) Color(0xFF0B0B0F) else if (selected) G.text else G.dim),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun RoundIcon(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    FocusBox(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp),
+        shape = CircleShape,
+        focusScale = 1.1f,
+        idleColor = if (selected) Color(0x40FFFFFF) else Color(0x1AFFFFFF),
+        focusColor = Color(0x40FFFFFF),
+        idleRim = Color(0x28FFFFFF),
+    ) { f ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { icon(if (f || selected) G.text else G.dim) }
+    }
+}
+
+@Composable
+private fun SearchIcon(c: Color) {
+    Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val sw = w * 0.11f
+        drawCircle(c, radius = w * 0.32f, center = Offset(w * 0.42f, w * 0.42f), style = Stroke(sw))
+        drawLine(c, Offset(w * 0.66f, w * 0.66f), Offset(w * 0.92f, w * 0.92f), sw * 1.2f, StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun GearIcon(c: Color) {
+    Canvas(Modifier.size(19.dp)) {
+        val w = size.width
+        val ctr = Offset(w / 2, w / 2)
+        for (i in 0 until 8) {
+            val a = Math.toRadians(i * 45.0)
+            val dx = kotlin.math.cos(a).toFloat()
+            val dy = kotlin.math.sin(a).toFloat()
+            drawLine(c, Offset(ctr.x + dx * w * 0.30f, ctr.y + dy * w * 0.30f), Offset(ctr.x + dx * w * 0.46f, ctr.y + dy * w * 0.46f), w * 0.15f, StrokeCap.Butt)
+        }
+        drawCircle(c, radius = w * 0.31f, center = ctr, style = Stroke(w * 0.13f))
     }
 }

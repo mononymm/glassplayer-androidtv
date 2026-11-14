@@ -230,6 +230,10 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         mpv?.setPropertyString("aid", id)
     }
 
+    override fun addSub(sub: ExternalSub) {
+        mpv?.command(arrayOf("sub-add", sub.url, "select", sub.label, sub.language ?: ""))
+    }
+
     override fun selectSub(id: String?) {
         mpv?.setPropertyString("sid", id ?: "no")
     }

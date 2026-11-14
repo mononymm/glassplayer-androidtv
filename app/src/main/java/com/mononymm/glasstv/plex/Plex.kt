@@ -177,6 +177,33 @@ class Plex(val prefs: Prefs, private val version: String) {
         return if (i >= 0) all.getOrNull(i + 1) else null
     }
 
+    // ---------- subtitle search (Plex's own, backed by OpenSubtitles) ----------
+
+    /** [lang] is a two-letter code ("en"). Best matches first. */
+    suspend fun searchSubtitles(ratingKey: String, lang: String): List<SubResult> {
+        val o = get("/library/metadata/$ratingKey/subtitles?language=${enc(lang)}&hearingImpaired=0&forced=0")
+        return o.container().arr("Stream").map { s ->
+            SubResult(
+                key = s.str("key") ?: "",
+                codec = (s.str("codec") ?: "srt").lowercase(),
+                languageCode = s.str("languageCode"),
+                name = s.str("title")?.takeIf { it.isNotBlank() } ?: s.str("displayTitle") ?: "Subtitle",
+                hearingImpaired = s.flag("hearingImpaired"),
+                forced = s.flag("forced"),
+                provider = s.str("providerTitle"),
+                score = if (s.has("score")) s.optDouble("score") else null,
+            )
+        }.filter { it.key.isNotBlank() }.sortedByDescending { it.score ?: 0.0 }
+    }
+
+    /** Asks the server to download [r] and attach it to the item. */
+    suspend fun addSubtitle(ratingKey: String, r: SubResult): Boolean = send(
+        "PUT",
+        "/library/metadata/$ratingKey/subtitles?key=${enc(r.key)}&codec=${enc(r.codec)}" +
+            "&language=${enc(r.languageCode ?: "")}&hearingImpaired=${if (r.hearingImpaired) 1 else 0}" +
+            "&forced=${if (r.forced) 1 else 0}&providerTitle=${enc(r.provider ?: "OpenSubtitles")}",
+    )
+
     // ---------- progress ----------
 
     suspend fun timeline(item: Item, state: String, timeMs: Long, durationMs: Long) = send(

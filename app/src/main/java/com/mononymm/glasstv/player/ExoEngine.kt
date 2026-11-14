@@ -146,7 +146,18 @@ class ExoEngine(private val ctx: Context, private val prefs: Prefs) : Engine {
         return root
     }
 
+    private var lastReq: LoadRequest? = null
+    private var pendingSubLabel: String? = null
+
+    override fun addSub(sub: ExternalSub) {
+        val r = lastReq ?: return
+        pendingSubLabel = sub.label
+        // ExoPlayer can't add a sidecar to a playing item: reload it with the new subtitle, same spot.
+        load(r.copy(externalSubs = r.externalSubs + sub, startMs = player.currentPosition))
+    }
+
     override fun load(req: LoadRequest) {
+        lastReq = req
         http.setDefaultRequestProperties(req.headers)
         val subs = req.externalSubs.mapNotNull { s ->
             val mime = when (s.codec) {
@@ -201,6 +212,11 @@ class ExoEngine(private val ctx: Context, private val prefs: Prefs) : Engine {
         }
         state.audio = audio
         state.subs = subs
+        pendingSubLabel?.let { want ->
+            val match = subs.firstOrNull { it.label.startsWith(want) } ?: return@let
+            pendingSubLabel = null
+            select(C.TRACK_TYPE_TEXT, match.id)
+        }
     }
 
     private fun select(type: Int, id: String) {

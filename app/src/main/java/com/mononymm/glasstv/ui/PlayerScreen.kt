@@ -23,6 +23,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import com.mononymm.glasstv.plex.Chapter
+import com.mononymm.glasstv.plex.SubResult
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -117,6 +118,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     // 0 = buttons, 1 = playlist row, 2 = chapters row.
     var level by remember { mutableIntStateOf(0) }
     var speedOpen by remember { mutableStateOf(false) }
+    var subSearch by remember { mutableStateOf(false) }
     var rowFocused by remember { mutableStateOf(false) }
     var seekFocused by remember { mutableStateOf(false) }
     val hasPlaylist = session.playlist.size > 1
@@ -185,6 +187,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     }
     LaunchedEffect(panel) {
         speedOpen = false
+        subSearch = false
         if (panel != null) panelFirst.focusSoon()
         else if (controls) (if (level > 0) tileFirst else playBtn).focusSoon()
     }
@@ -258,7 +261,16 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         when (k.keyCode) {
             AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> {
                 if (countdown > 0) { if (up) exit(); return true }
-                if (panel != null) { if (up) { if (speedOpen) speedOpen = false else panel = null }; return true }
+                if (panel != null) {
+                    if (up) {
+                        when {
+                            speedOpen -> speedOpen = false
+                            subSearch -> subSearch = false
+                            else -> panel = null
+                        }
+                    }
+                    return true
+                }
                 if (controls) { if (up) { if (level > 0) levelUp() else hideControls() }; return true }
                 if (up) exit()
                 return true
@@ -390,7 +402,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         }
 
         panel?.let { p ->
-            SidePanel(p, session, st, panelFirst, speedOpen, { speedOpen = it }) { panel = null }
+            SidePanel(p, session, st, panelFirst, speedOpen, { speedOpen = it }, subSearch, { subSearch = it }) { panel = null }
         }
 
         if (countdown > 0) {
@@ -928,6 +940,8 @@ private fun SidePanel(
     first: FocusRequester,
     speedOpen: Boolean,
     setSpeedOpen: (Boolean) -> Unit,
+    subSearch: Boolean,
+    setSubSearch: (Boolean) -> Unit,
     close: () -> Unit,
 ) {
     val engine = session.engine
@@ -938,34 +952,15 @@ private fun SidePanel(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             val title = when (p) {
-                Panel.AUDIO -> "Audio"; Panel.SUBS -> "Subtitles"; Panel.INFO -> "Playback"
+                Panel.AUDIO -> "Audio"; Panel.SUBS -> if (subSearch) "Search for subtitles" else "Subtitles"; Panel.INFO -> "Playback"
             }
             Text(title, style = G.h2, modifier = Modifier.padding(bottom = 16.dp))
             when (p) {
-                Panel.AUDIO, Panel.SUBS -> {
-                    val rows = if (p == Panel.AUDIO) (st?.audio ?: emptyList()).map { t -> TrackRow(t.label, t.selected) { engine?.selectAudio(t.id) } }
-                    else listOf(TrackRow("Off", st?.subs?.none { it.selected } == true) { engine?.selectSub(null) }) +
-                        (st?.subs ?: emptyList()).map { t -> TrackRow(t.label, t.selected) { engine?.selectSub(t.id) } }
-                    if (rows.isEmpty()) Text("Nothing to choose here.", style = G.small, modifier = Modifier.padding(12.dp))
-                    val firstIndex = rows.indexOfFirst { it.selected }.coerceAtLeast(0)
-                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(rows) { i, r ->
-                            MenuRow(
-                                onClick = { r.pick(); close() },
-                                modifier = if (i == firstIndex) Modifier.focusRequester(first) else Modifier,
-                            ) { _ ->
-                                Text(
-                                    r.label, style = MenuLabel.copy(color = if (r.selected) G.text else G.dim),
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                                )
-                                if (r.selected) {
-                                    Spacer(Modifier.width(12.dp))
-                                    Box(Modifier.size(8.dp).clip(CircleShape).background(G.red))
-                                }
-                            }
-                        }
-                    }
+                Panel.AUDIO -> {
+                    val rows = (st?.audio ?: emptyList()).map { t -> TrackRow(t.label, t.selected) { engine?.selectAudio(t.id) } }
+                    TrackList(rows, rows.indexOfFirst { it.selected }.coerceAtLeast(0), first, close)
                 }
+                Panel.SUBS -> SubtitleMenu(session, st, first, subSearch, setSubSearch, close)
                 Panel.INFO -> PlaybackMenu(session, st, first, speedOpen, setSpeedOpen)
             }
         }
@@ -993,6 +988,154 @@ private fun MenuRow(
             Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) { content(f) }
+    }
+}
+
+/** Subtitles card: Search sits above the tracks; the card opens on the top track. */
+@Composable
+private fun SubtitleMenu(session: PlaybackSession, st: PlayerState?, first: FocusRequester, searching: Boolean, setSearching: (Boolean) -> Unit, close: () -> Unit) {
+    val engine = session.engine
+    val searchRow = remember { FocusRequester() }
+    var wasSearching by remember { mutableStateOf(false) }
+    LaunchedEffect(searching) {
+        if (searching) wasSearching = true else if (wasSearching) searchRow.focusSoon()
+    }
+    if (searching) {
+        SubtitleSearch(session, close)
+        return
+    }
+    MenuRow(onClick = { setSearching(true) }, modifier = Modifier.focusRequester(searchRow)) { f ->
+        SearchGlyph(if (f) G.text else G.dim)
+        Spacer(Modifier.width(12.dp))
+        Text("Search for subtitles", style = MenuLabel.copy(color = if (f) G.text else G.dim), modifier = Modifier.weight(1f))
+        Text("OpenSubtitles", style = G.small.copy(color = G.faint))
+        Spacer(Modifier.width(8.dp))
+        Chevron(G.faint)
+    }
+    MenuDivider()
+    val rows = (st?.subs ?: emptyList()).map { t -> TrackRow(t.label, t.selected) { engine?.selectSub(t.id) } } +
+        TrackRow("Off", st?.subs?.none { it.selected } == true) { engine?.selectSub(null) }
+    TrackList(rows, firstIndex = 0, first = first, close = close)
+}
+
+@Composable
+private fun TrackList(rows: List<TrackRow>, firstIndex: Int, first: FocusRequester, close: () -> Unit) {
+    if (rows.isEmpty()) Text("Nothing to choose here.", style = G.small, modifier = Modifier.padding(12.dp))
+    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 340.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        itemsIndexed(rows) { i, r ->
+            MenuRow(
+                onClick = { r.pick(); close() },
+                modifier = if (i == firstIndex) Modifier.focusRequester(first) else Modifier,
+            ) { _ ->
+                Text(
+                    r.label, style = MenuLabel.copy(color = if (r.selected) G.text else G.dim),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                if (r.selected) {
+                    Spacer(Modifier.width(12.dp))
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(G.red))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuDivider() {
+    Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).fillMaxWidth().height(1.dp).background(Color(0x1EFFFFFF)))
+}
+
+private val SUB_LANGS = listOf("English" to "en", "Japanese" to "ja", "Spanish" to "es")
+
+/** Plex's on-demand search. Opens on the best match; Up reaches the language switch. */
+@Composable
+private fun SubtitleSearch(session: PlaybackSession, close: () -> Unit) {
+    var lang by remember { mutableIntStateOf(0) }
+    var results by remember { mutableStateOf<List<SubResult>?>(null) }
+    var status by remember { mutableStateOf("") }
+    var downloading by remember { mutableStateOf<String?>(null) }
+    val langRow = remember { FocusRequester() }
+    val firstResult = remember { FocusRequester() }
+    var focusedOnce by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { langRow.focusSoon() }
+    LaunchedEffect(lang) {
+        results = null
+        status = "Searching OpenSubtitles…"
+        val r = runCatching { session.searchSubtitles(SUB_LANGS[lang].second) }
+        results = r.getOrNull() ?: emptyList()
+        status = when {
+            r.isFailure -> "Search didn't work. Try again in a bit."
+            results.isNullOrEmpty() -> "No ${SUB_LANGS[lang].first} subtitles found."
+            else -> ""
+        }
+        if (!focusedOnce && !results.isNullOrEmpty()) { focusedOnce = true; firstResult.focusSoon() }
+    }
+
+    MenuRow(
+        onClick = {},
+        modifier = Modifier.focusRequester(langRow).onPreviewKeyEvent { ev ->
+            when (ev.nativeKeyEvent.keyCode) {
+                AK.KEYCODE_DPAD_LEFT -> { if (ev.type == KeyEventType.KeyUp && lang > 0) lang--; true }
+                AK.KEYCODE_DPAD_RIGHT -> { if (ev.type == KeyEventType.KeyUp && lang < SUB_LANGS.lastIndex) lang++; true }
+                else -> false
+            }
+        },
+    ) { f ->
+        Text("Language", style = MenuLabel, modifier = Modifier.weight(1f))
+        Segmented(SUB_LANGS.map { it.first }, lang, f)
+    }
+    MenuDivider()
+    val list = results
+    if (list.isNullOrEmpty()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (list == null) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = G.red, strokeWidth = 2.dp)
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(status, style = G.small.copy(color = G.dim))
+        }
+        return
+    }
+    if (status.isNotEmpty()) Text(status, style = G.small.copy(color = G.red), modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
+    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        itemsIndexed(list) { i, r ->
+            MenuRow(
+                onClick = {
+                    if (downloading == null) {
+                        downloading = r.key
+                        status = ""
+                        scope.launch {
+                            val ok = runCatching { session.downloadSubtitle(r) }.getOrDefault(false)
+                            downloading = null
+                            if (ok) close() else status = "Couldn't download that one. Try another."
+                        }
+                    }
+                },
+                modifier = if (i == 0) Modifier.focusRequester(firstResult) else Modifier,
+            ) { f ->
+                Column(Modifier.weight(1f)) {
+                    Text(r.name, style = MenuLabel.copy(color = if (f) G.text else G.dim), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val detail = if (downloading == r.key) "Downloading…" else listOfNotNull(
+                        r.codec.uppercase(),
+                        "Best match".takeIf { i == 0 },
+                        "Hearing impaired".takeIf { r.hearingImpaired },
+                    ).joinToString("  ·  ")
+                    Text(detail, style = G.small.copy(color = if (downloading == r.key) G.red else G.faint))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchGlyph(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
+        val w = size.width
+        val sw = w * 0.12f
+        drawCircle(c, radius = w * 0.32f, center = androidx.compose.ui.geometry.Offset(w * 0.42f, w * 0.42f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+        drawLine(c, androidx.compose.ui.geometry.Offset(w * 0.66f, w * 0.66f), androidx.compose.ui.geometry.Offset(w * 0.92f, w * 0.92f), sw * 1.2f, androidx.compose.ui.graphics.StrokeCap.Round)
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -36,6 +37,8 @@ fun SearchScreen() {
     var hero by remember { mutableStateOf<Item?>(null) }
     var busy by remember { mutableStateOf(false) }
     val field = remember { FocusRequester() }
+    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(query) {
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
@@ -70,13 +73,19 @@ fun SearchScreen() {
             if (busy && results.isEmpty()) Text("Searching…", style = G.small, modifier = Modifier.padding(start = 56.dp))
             else if (!busy && query.isNotBlank() && results.isEmpty()) Text("No results", style = G.small, modifier = Modifier.padding(start = 56.dp))
             LazyVerticalGrid(
+                state = grid,
                 columns = GridCells.Adaptive(POSTER_W.dp),
                 contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(results, key = { it.ratingKey }) { PosterCard(it, { f -> hero = f }) }
+                items(results.size, key = { results[it].ratingKey }) { i ->
+                    PosterCard(results[i], { f ->
+                        hero = f
+                        scope.launch { grid.animateScrollToItem(i) }
+                    })
+                }
             }
         }
     }

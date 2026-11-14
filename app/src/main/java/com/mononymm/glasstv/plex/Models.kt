@@ -121,6 +121,25 @@ data class SubTrack(
     val styled get() = codec == "ass" || codec == "ssa"
 }
 
+/** One result from Plex's on-demand subtitle search (OpenSubtitles). */
+data class SubResult(
+    val key: String,
+    val codec: String,
+    val languageCode: String?,
+    val name: String,
+    val hearingImpaired: Boolean,
+    val forced: Boolean,
+    val provider: String?,
+    val score: Double?,
+)
+
+internal fun JSONObject.flag(k: String): Boolean = when (val v = opt(k)) {
+    is Boolean -> v
+    is Number -> v.toInt() != 0
+    is String -> v == "1" || v.equals("true", ignoreCase = true)
+    else -> false
+}
+
 data class Chapter(val startMs: Long, val title: String?, val thumb: String? = null)
 
 /** Everything needed to decide which engine plays a file and to start it. */

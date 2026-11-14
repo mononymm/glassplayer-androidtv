@@ -56,6 +56,8 @@ interface Engine {
     fun selectAudio(id: String)
     /** null turns subtitles off. */
     fun selectSub(id: String?)
+    /** Adds a sidecar subtitle mid-playback and switches to it. */
+    fun addSub(sub: ExternalSub)
     fun release()
 }
 
