@@ -1002,6 +1002,9 @@ private fun fileDetails(mi: com.mononymm.glasstv.plex.MediaInfo, st: PlayerState
         mi.bitrateKbps?.let { if (it >= 1000) "%.1f Mbps".format(it / 1000f) else "$it kbps" },
     ).joinToString("  ·  ")
     if (file.isNotBlank()) add("File" to file)
+    val render = st?.renderSize
+    if (render != null) add("Rendering" to listOfNotNull(render, st?.scaler).joinToString("  ·  "))
+    else add("Rendering" to "Scaled by the TV")
 }
 
 private fun channels(n: Int): String = when (n) {

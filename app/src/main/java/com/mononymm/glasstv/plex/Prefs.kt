@@ -50,6 +50,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("matchFrameRate", true)
         set(v) = p.edit().putBoolean("matchFrameRate", v).apply()
 
+    /** mpv upscaling with Lanczos EWA instead of bilinear (falls back on its own if frames drop). */
+    var sharpScaling: Boolean
+        get() = p.getBoolean("sharpScaling", true)
+        set(v) = p.edit().putBoolean("sharpScaling", v).apply()
+
     var upNext: Boolean
         get() = p.getBoolean("upNext", true)
         set(v) = p.edit().putBoolean("upNext", v).apply()

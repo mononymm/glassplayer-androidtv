@@ -39,6 +39,10 @@ class PlayerState {
     var subs by mutableStateOf<List<TrackInfo>>(emptyList())
     var error by mutableStateOf<String?>(null)
     var videoFps by mutableFloatStateOf(0f)
+    /** Size mpv draws the picture at (its surface), e.g. "1920×1080". Null for ExoPlayer. */
+    var renderSize by mutableStateOf<String?>(null)
+    /** mpv's upscaler, e.g. "Lanczos EWA" or "Bilinear (frames were dropping)". */
+    var scaler by mutableStateOf<String?>(null)
 }
 
 interface Engine {

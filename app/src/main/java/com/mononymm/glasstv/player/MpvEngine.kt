@@ -49,6 +49,15 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         val fonts = MpvAssets.fontsDir(ctx)
         m.setOptionString("config", "no")
         m.setOptionString("profile", "fast")
+        if (prefs.sharpScaling) {
+            // Only the upscaler gets the expensive filter; chroma and downscaling stay cheap.
+            m.setOptionString("scale", "ewa_lanczos")
+            m.setOptionString("cscale", "spline36")
+            m.setOptionString("dscale", "mitchell")
+            state.scaler = "Lanczos EWA"
+        } else {
+            state.scaler = "Bilinear"
+        }
         m.setOptionString("vo", "gpu")
         m.setOptionString("gpu-context", "android")
         m.setOptionString("opengl-es", "yes")
@@ -101,6 +110,7 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         m.observeProperty("aid", MpvFormat.MPV_FORMAT_STRING)
         m.observeProperty("sid", MpvFormat.MPV_FORMAT_STRING)
         m.observeProperty("container-fps", MpvFormat.MPV_FORMAT_DOUBLE)
+        m.observeProperty("frame-drop-count", MpvFormat.MPV_FORMAT_INT64)
     }
 
     override fun createView(ctx: Context): View {
@@ -117,6 +127,7 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 mpv?.setPropertyString("android-surface-size", "${width}x$height")
+                state.renderSize = "$width×$height"
                 if (prefs.matchFrameRate) FrameRate.apply(holder.surface, state.videoFps)
             }
 
@@ -147,6 +158,28 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         val opts = if (req.startMs > 0) "start=" + String.format(Locale.US, "%.3f", req.startMs / 1000.0) else ""
         if (opts.isEmpty()) m.command(arrayOf("loadfile", req.url, "replace"))
         else m.command(arrayOf("loadfile", req.url, "replace", "-1", opts))
+    }
+
+    // Frame drops in the last few seconds; if the sharp scaler can't keep up, drop back to bilinear.
+    private val drops = ArrayDeque<Pair<Long, Long>>()
+    private var lastDropCount = -1L
+    private var restartAt = 0L
+    private var fellBack = false
+
+    private fun onDropCount(count: Long) {
+        val now = System.currentTimeMillis()
+        val prev = lastDropCount
+        lastDropCount = count
+        if (prev < 0 || count <= prev || fellBack || !prefs.sharpScaling) return
+        if (now - restartAt < 3000) return // seeks and start-up drop a few frames anyway
+        drops.addLast(now to (count - prev))
+        while (drops.isNotEmpty() && now - drops.first().first > 10_000) drops.removeFirst()
+        if (drops.sumOf { it.second } >= 15) {
+            fellBack = true
+            mpv?.setPropertyString("scale", "bilinear")
+            mpv?.setPropertyString("cscale", "bilinear")
+            state.scaler = "Bilinear (frames were dropping)"
+        }
     }
 
     private fun onFileLoaded() {
@@ -223,6 +256,7 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
 
     override fun eventProperty(property: String, value: Long) {
         if (property == "track-list/count") main.post { refreshTracks() }
+        if (property == "frame-drop-count") main.post { onDropCount(value) }
     }
 
     override fun eventProperty(property: String, value: Double) {
@@ -257,7 +291,10 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         main.post {
             when (eventId) {
                 MpvEvent.MPV_EVENT_FILE_LOADED -> onFileLoaded()
-                MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> state.buffering = false
+                MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
+                    state.buffering = false
+                    restartAt = System.currentTimeMillis()
+                }
                 MpvEvent.MPV_EVENT_END_FILE -> {}
             }
         }

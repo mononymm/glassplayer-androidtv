@@ -31,6 +31,7 @@ fun SettingsScreen() {
     var subDelay by remember { mutableStateOf(p.subDelayMs) }
     var matchFps by remember { mutableStateOf(p.matchFrameRate) }
     var upNext by remember { mutableStateOf(p.upNext) }
+    var sharp by remember { mutableStateOf(p.sharpScaling) }
     var defEngine by remember { mutableStateOf(p.defaultEngine) }
     var libEngines by remember { mutableStateOf(app.sections.associate { it.key to p.engineForLibrary(it.key) }) }
     val first = remember { FocusRequester() }
@@ -81,6 +82,11 @@ fun SettingsScreen() {
             item {
                 SettingRow("Match frame rate", "Switch the TV to 24/25/30/60 Hz to match the video. Removes judder.", if (matchFps) "On" else "Off") {
                     matchFps = !matchFps; p.matchFrameRate = matchFps
+                }
+            }
+            item {
+                SettingRow("Sharper scaling (mpv)", "Lanczos EWA instead of bilinear when mpv enlarges the picture. Turns itself off for a file if frames start dropping.", if (sharp) "On" else "Off") {
+                    sharp = !sharp; p.sharpScaling = sharp
                 }
             }
             item {
