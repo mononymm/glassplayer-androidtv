@@ -56,6 +56,7 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/*.apk out/Glass-TV.apk
           (cd out && sha256sum Glass-TV.apk > Glass-TV.apk.sha256 && cat Glass-TV.apk.sha256)
+          unzip -l out/Glass-TV.apk | grep -E 'lib/|assets/' || true
 
       - uses: actions/upload-artifact@v4
         with:
