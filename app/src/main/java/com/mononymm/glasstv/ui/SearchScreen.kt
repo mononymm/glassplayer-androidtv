@@ -75,16 +75,16 @@ fun SearchScreen() {
             LazyVerticalGrid(
                 state = grid,
                 columns = GridCells.Adaptive(POSTER_W.dp),
-                contentPadding = PaddingValues(start = EDGE, end = EDGE, top = 18.dp, bottom = 48.dp),
+                contentPadding = PaddingValues(start = EDGE, end = EDGE, top = 0.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(results.size, key = { results[it].ratingKey }) { i ->
                     PosterCard(results[i], { f ->
                         hero = f
                         scope.launch { grid.animateScrollToItem(i) }
-                    })
+                    }, Modifier.padding(top = 10.dp))
                 }
             }
         }

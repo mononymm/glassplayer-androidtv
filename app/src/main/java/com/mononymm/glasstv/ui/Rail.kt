@@ -24,14 +24,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -82,11 +82,13 @@ fun Clock(modifier: Modifier = Modifier) {
         }
     }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(Date(now)), style = G.label.copy(color = G.dim, fontSize = 13.sp))
+        Text(SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(Date(now)), style = G.label.copy(color = G.dim, fontSize = 13.sp, shadow = ClockShadow))
         Spacer(Modifier.width(12.dp))
-        Text(DateFormat.getTimeFormat(ctx).format(Date(now)), style = G.h2)
+        Text(DateFormat.getTimeFormat(ctx).format(Date(now)), style = G.h2.copy(shadow = ClockShadow))
     }
 }
+
+private val ClockShadow = androidx.compose.ui.graphics.Shadow(Color(0xCC000000), Offset(0f, 2f), 8f)
 
 private enum class RailIcon { HOME, MOVIES, SHOWS, MUSIC, PHOTOS, OTHER, SEARCH, SETTINGS }
 
@@ -98,10 +100,17 @@ private fun iconFor(s: Section) = when (s.type) {
     else -> RailIcon.OTHER
 }
 
+private const val STEP_DP = 44
+
+/** One entry in the side bar's library list ("home" or a section key). */
+private class RailEntry(val key: String, val icon: RailIcon, val label: String, val section: Section?)
+
 /**
  * Icons in the left margin. The page opens it (Left with nothing further left); while
- * closed its items can't take focus, so the page never wanders into it. Right or Back
- * closes it and returns focus to where it was. Hold OK on a library to move it.
+ * closed its items can't take focus. It opens on Home; Up reaches Search, and Left from
+ * Search is Settings. Right (from anything but Settings) or Back closes it and returns
+ * focus to where it was. Libraries page in whole chunks with arrows when there are more.
+ * Hold OK on a library until it lifts, let go, Up/Down to move it, OK to drop it.
  */
 @Composable
 fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
@@ -111,9 +120,35 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
     }
     var moving by remember { mutableStateOf<String?>(null) }
     var armed by remember { mutableStateOf(false) }
-    val selectedReq = remember { FocusRequester() }
+    var page by remember { mutableIntStateOf(0) }
+    var focusIdx by remember { mutableIntStateOf(0) }
+    var top by remember { mutableStateOf<String?>(null) } // "settings" / "search" while one has focus
+    var wanted by remember { mutableStateOf<Int?>(null) }
+    var per by remember { mutableIntStateOf(6) }
+    val slots = remember { List(24) { FocusRequester() } }
+    val searchReq = remember { FocusRequester() }
     val width by animateDpAsState(if (open) RAIL_OPEN else RAIL_COLLAPSED, tween(200), label = "rail")
-    LaunchedEffect(open) { if (open) selectedReq.focusSoon() else moving = null }
+
+    val entries = listOf(RailEntry("home", RailIcon.HOME, "Home", null)) +
+        app.orderedSections.map { RailEntry(it.key, iconFor(it), it.title, it) }
+    val pages = maxOf(1, (entries.size + per - 1) / per)
+    if (page >= pages) page = pages - 1
+
+    LaunchedEffect(open) {
+        if (open) { page = 0; wanted = 0 } else moving = null
+    }
+    LaunchedEffect(wanted, page, per) {
+        val w = wanted ?: return@LaunchedEffect
+        val slot = w - page * per
+        if (slot in 0 until per) slots[slot].focusSoon()
+        wanted = null
+    }
+
+    fun goTo(idx: Int) {
+        val i = idx.coerceIn(0, entries.lastIndex)
+        page = i / per
+        wanted = i
+    }
 
     Box(Modifier.fillMaxSize()) {
         if (open) Box(Modifier.fillMaxSize().background(Color(0x73000000)))
@@ -124,23 +159,49 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
                     if (!open) return@onPreviewKeyEvent false
                     val k = ev.nativeKeyEvent.keyCode
                     val down = ev.type == KeyEventType.KeyDown
+                    val first = down && ev.nativeKeyEvent.repeatCount == 0
                     val m = moving
-                    if (m == null) {
+                    if (m != null) {
+                        // Only a fresh press counts: the held OK that started moving keeps repeating.
+                        if (first) armed = true
                         return@onPreviewKeyEvent when (k) {
-                            AK.KEYCODE_DPAD_RIGHT -> { if (down) close(); true }
-                            AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> { if (!down) close(); true }
+                            AK.KEYCODE_DPAD_UP, AK.KEYCODE_DPAD_DOWN -> {
+                                if (down) {
+                                    val dir = if (k == AK.KEYCODE_DPAD_UP) -1 else 1
+                                    val idx = entries.indexOfFirst { it.key == m }
+                                    // Home stays on top.
+                                    if (idx + dir >= 1 && idx + dir <= entries.lastIndex) {
+                                        app.moveSection(m, dir)
+                                        goTo(idx + dir)
+                                    }
+                                }
+                                true
+                            }
+                            AK.KEYCODE_DPAD_LEFT, AK.KEYCODE_DPAD_RIGHT -> true
+                            AK.KEYCODE_DPAD_CENTER, AK.KEYCODE_ENTER, AK.KEYCODE_NUMPAD_ENTER, AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> {
+                                if (!down && armed) moving = null
+                                true
+                            }
                             else -> false
                         }
                     }
-                    if (down) armed = true
                     when (k) {
-                        AK.KEYCODE_DPAD_UP -> { if (down) app.moveSection(m, -1); true }
-                        AK.KEYCODE_DPAD_DOWN -> { if (down) app.moveSection(m, 1); true }
-                        AK.KEYCODE_DPAD_LEFT, AK.KEYCODE_DPAD_RIGHT -> true
-                        AK.KEYCODE_DPAD_CENTER, AK.KEYCODE_ENTER, AK.KEYCODE_NUMPAD_ENTER, AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> {
-                            // The release of the long press that started moving doesn't count.
-                            if (!down && armed) moving = null
-                            true
+                        AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> { if (!down) close(); true }
+                        AK.KEYCODE_DPAD_RIGHT -> if (top == "settings") false else { if (down) close(); true }
+                        AK.KEYCODE_DPAD_LEFT -> top != "search" // Search -> Settings; nothing else goes left
+                        AK.KEYCODE_DPAD_UP -> when {
+                            top != null -> true
+                            focusIdx == page * per && page > 0 -> { if (down) goTo(focusIdx - 1); true }
+                            focusIdx == 0 -> { if (down) searchReq.requestFocus(); true }
+                            else -> false
+                        }
+                        AK.KEYCODE_DPAD_DOWN -> when {
+                            top != null -> { if (down) goTo(page * per); true }
+                            focusIdx == minOf(entries.lastIndex, page * per + per - 1) -> {
+                                if (down && focusIdx < entries.lastIndex) goTo(focusIdx + 1)
+                                true
+                            }
+                            else -> false
                         }
                         else -> false
                     }
@@ -152,41 +213,105 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
                     Logo(Modifier.size(28.dp))
                     Spacer(Modifier.width(12.dp))
                     Text("Glass", style = G.h2)
+                    Spacer(Modifier.width(8.dp))
+                    Text("v${app.version}", style = G.small.copy(color = G.faint, fontSize = 11.sp))
                 }
             }
-            // Libraries scroll if there are more than fit; Search and Settings stay pinned below.
-            Column(Modifier.weight(1f).padding(top = 40.dp).verticalScroll(rememberScrollState())) {
-                RailItem(RailIcon.HOME, "Home", selected == "home", open, false, if (selected == "home") selectedReq else null,
-                    onClick = { if (selected != "home") app.replaceAll(Screen.Home) else close() })
-                app.orderedSections.forEach { s ->
-                    key(s.key) {
-                        RailItem(iconFor(s), s.title, selected == s.key, open, moving == s.key, if (selected == s.key) selectedReq else null,
-                            onClick = {
-                                if (selected != s.key) {
-                                    app.replaceAll(Screen.Home)
-                                    app.go(Screen.Library(s))
-                                } else close()
-                            },
-                            onLongClick = { moving = s.key; armed = false })
+            // Settings | Search
+            Row(
+                Modifier.fillMaxWidth().padding(start = if (open) 10.dp else 8.dp, end = if (open) 14.dp else 8.dp, top = 18.dp).height(38.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (open) 6.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TopButton(RailIcon.SETTINGS, "Settings", open, Modifier.weight(1f), onFocus = { top = it }, key = "settings",
+                    onClick = { if (selected != "settings") app.go(Screen.Settings) else close() })
+                TopButton(RailIcon.SEARCH, "Search", open, Modifier.weight(1f).focusRequester(searchReq), onFocus = { top = it }, key = "search",
+                    onClick = { if (selected != "search") app.go(Screen.Search) else close() })
+            }
+            if (open) Box(Modifier.padding(start = 24.dp, end = 28.dp, top = 12.dp).fillMaxWidth().height(1.dp).background(Color(0x1EFFFFFF)))
+            else Spacer(Modifier.height(13.dp))
+            // Libraries, a whole page at a time.
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val fit = ((maxHeight - 64.dp) / STEP_DP.dp).toInt().coerceIn(1, slots.size)
+                if (fit != per) per = fit
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.Center) {
+                        if (page > 0) Chevron(up = true, open = open)
+                    }
+                    val start = page * per
+                    entries.subList(minOf(start, entries.size), minOf(start + per, entries.size)).forEachIndexed { slot, e ->
+                        val idx = start + slot
+                        key(e.key) {
+                            RailItem(
+                                e.icon, e.label, selected == e.key, open, moving == e.key, slots[slot],
+                                onClick = {
+                                    when {
+                                        selected == e.key -> close()
+                                        e.section == null -> app.replaceAll(Screen.Home)
+                                        else -> { app.replaceAll(Screen.Home); app.go(Screen.Library(e.section)) }
+                                    }
+                                },
+                                onLongClick = if (e.section != null) ({ moving = e.key; armed = false }) else null,
+                                onFocus = { focusIdx = idx; top = null },
+                            )
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.Center) {
+                        if (start + per < entries.size) Chevron(up = false, open = open)
                     }
                 }
-                if (open) {
-                    Text(
-                        if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library to move it",
-                        style = G.small.copy(color = if (moving != null) G.red else G.faint, fontSize = 11.sp),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 24.dp, top = 6.dp, bottom = 6.dp),
-                    )
-                }
             }
-            if (open) Box(Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(1.dp).background(Color(0x1EFFFFFF)))
-            Spacer(Modifier.height(8.dp))
-            RailItem(RailIcon.SEARCH, "Search", selected == "search", open, false, if (selected == "search") selectedReq else null,
-                onClick = { if (selected != "search") app.go(Screen.Search) else close() })
-            RailItem(RailIcon.SETTINGS, "Settings", selected == "settings", open, false, if (selected == "settings") selectedReq else null,
-                onClick = { if (selected != "settings") app.go(Screen.Settings) else close() })
-            Spacer(Modifier.height(24.dp))
+            if (open) {
+                Text(
+                    if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library to move it",
+                    style = G.small.copy(color = if (moving != null) G.red else G.faint, fontSize = 11.sp),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 24.dp, bottom = 16.dp),
+                )
+            } else Spacer(Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+private fun TopButton(icon: RailIcon, label: String, open: Boolean, modifier: Modifier, key: String, onFocus: (String?) -> Unit, onClick: () -> Unit) {
+    FocusBox(
+        onClick = onClick,
+        modifier = modifier.fillMaxHeight(),
+        shape = G.pillShape,
+        focusScale = 1.03f,
+        idleColor = if (open) Color(0x14FFFFFF) else Color.Transparent,
+        focusColor = Color(0xF2F4F4F6),
+        idleRim = Color.Transparent,
+        glow = false,
+        focusEnabled = open,
+        onFocus = { onFocus(key) },
+    ) { f ->
+        val c = when {
+            f -> Color(0xFF0B0B0F)
+            open -> G.dim
+            else -> Color(0x78F4F4F6)
+        }
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Canvas(Modifier.size(if (open) 18.dp else 16.dp)) { drawRailIcon(icon, c) }
+            if (open) {
+                Spacer(Modifier.width(8.dp))
+                Text(label, style = G.label.copy(color = c), maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Chevron(up: Boolean, open: Boolean) {
+    val c = if (open) G.dim else Color(0x78F4F4F6)
+    Canvas(Modifier.size(12.dp, 8.dp)) {
+        val w = size.width
+        val h = size.height
+        val p = Path().apply {
+            if (up) { moveTo(0f, h); lineTo(w / 2, 0f); lineTo(w, h) } else { moveTo(0f, 0f); lineTo(w / 2, h); lineTo(w, 0f) }
+        }
+        drawPath(p, c, style = Stroke(w * 0.15f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -200,8 +325,9 @@ private fun RailItem(
     req: FocusRequester?,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onFocus: (() -> Unit)? = null,
 ) {
-    val mod = Modifier.padding(start = if (open) 10.dp else 12.dp, end = if (open) 14.dp else 12.dp, top = 3.dp, bottom = 3.dp)
+    val mod = Modifier.padding(start = if (open) 10.dp else 12.dp, end = if (open) 14.dp else 12.dp, top = 3.dp, bottom = 3.dp) // 44dp a row
         .height(38.dp)
         .let { if (open) it.fillMaxWidth() else it.width(40.dp) }
         .let { if (req != null) it.focusRequester(req) else it }
@@ -216,6 +342,7 @@ private fun RailItem(
         idleRim = if (moving) G.red else Color.Transparent,
         glow = false,
         focusEnabled = open,
+        onFocus = onFocus,
     ) { f ->
         val c = when {
             f && !moving -> Color(0xFF0B0B0F)

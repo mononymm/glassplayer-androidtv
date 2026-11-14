@@ -131,7 +131,7 @@ fun HomeScreen() {
             Modifier.fillMaxSize().onPreviewKeyEvent { ev ->
                 if (moving == null) return@onPreviewKeyEvent false
                 val down = ev.type == KeyEventType.KeyDown
-                if (down) armed = true
+                if (down && ev.nativeKeyEvent.repeatCount == 0) armed = true
                 when (ev.nativeKeyEvent.keyCode) {
                     AK.KEYCODE_DPAD_UP -> { if (down) move(-1); true }
                     AK.KEYCODE_DPAD_DOWN -> { if (down) move(1); true }

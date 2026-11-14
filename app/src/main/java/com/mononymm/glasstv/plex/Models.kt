@@ -49,6 +49,7 @@ data class Item(
     val addedAt: Long = 0,
     val lastViewedAt: Long = 0,
     val aired: String? = null,
+    val titleSort: String? = null,
 ) {
     val isEpisode get() = type == "episode"
     val isShow get() = type == "show"
@@ -103,6 +104,7 @@ data class Item(
                 addedAt = o.long("addedAt") ?: 0,
                 lastViewedAt = o.long("lastViewedAt") ?: 0,
                 aired = o.str("originallyAvailableAt"),
+                titleSort = o.str("titleSort"),
             )
         }
     }
