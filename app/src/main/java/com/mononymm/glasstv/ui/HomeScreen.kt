@@ -127,6 +127,10 @@ fun HomeScreen() {
             val to = (ids.indexOf(id) + dir).coerceIn(0, ids.lastIndex)
             scope.launch { listState.animateScrollToItem(to) }
         }
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        val rowScroll = androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides NoAutoScroll) {
         LazyColumn(
             Modifier.fillMaxSize().onPreviewKeyEvent { ev ->
                 if (moving == null) return@onPreviewKeyEvent false
@@ -148,17 +152,18 @@ fun HomeScreen() {
         ) {
             items(shown.size, key = { shown[it].id }) { i ->
                 val r = shown[i]
-                CompositionLocalProvider(LocalRowMove provides { moving = r.id; armed = false }) {
+                // Rows keep normal sideways scrolling; only the list's up/down nudging is off.
+                @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+                CompositionLocalProvider(LocalRowMove provides { moving = r.id; armed = false }, androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowScroll) {
                     Box(if (i == 0) Modifier.focusRequester(firstRow) else Modifier) {
                         ItemRow(r.title, r.items, r.wide, note = if (moving == r.id) "↑ ↓ to move, OK when done" else null) {
                             hero = it
-                            if (moving == null && (listState.firstVisibleItemIndex != i || listState.firstVisibleItemScrollOffset != 0)) {
-                                scope.launch { listState.animateScrollToItem(i) }
-                            }
+                            if (moving == null) scope.launch { listState.animateScrollToItem(i) }
                         }
                     }
                 }
             }
+        }
         }
     }
 }

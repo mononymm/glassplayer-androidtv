@@ -339,3 +339,14 @@ fun GlassPanel(modifier: Modifier = Modifier, content: @Composable androidx.comp
         content = content,
     )
 }
+
+
+/**
+ * For lists that snap their focused row into place themselves: stops the list's own
+ * "keep the focused item in view" scrolling, which otherwise lands after the snap and
+ * leaves the row offset whenever a nested row also scrolled sideways.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+val NoAutoScroll = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
+}
