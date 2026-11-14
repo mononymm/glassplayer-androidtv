@@ -412,8 +412,8 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
 }
 
 private val PANEL_H = 300.dp
-private val LIFT = 272.dp
-private val SIDE_BTN = 44.dp
+private val LIFT = 284.dp // PANEL_H - bottom padding, so the dimmed controls sit just above the row
+private val SIDE_BTN = 40.dp
 
 @Composable
 private fun Controls(
@@ -458,7 +458,7 @@ private fun Controls(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .offset(y = -lift)
                 .graphicsLayer { alpha = fade }
-                .padding(start = 48.dp, end = 48.dp, bottom = 28.dp),
+                .padding(start = 48.dp, end = 48.dp, bottom = 16.dp),
         ) {
             // Title on the left, clock and file line on the right.
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.Bottom) {
@@ -505,7 +505,7 @@ private fun Controls(
             }
             Spacer(Modifier.height(14.dp))
             // Buttons: two on each side at matching insets, play group dead centre.
-            Box(Modifier.fillMaxWidth().height(64.dp).onFocusChanged { onRowFocus(it.hasFocus) }) {
+            Box(Modifier.fillMaxWidth().height(54.dp).onFocusChanged { onRowFocus(it.hasFocus) }) {
                 Row(Modifier.align(Alignment.CenterStart), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassIconButton({ onPanel(Panel.AUDIO) }, size = SIDE_BTN, enabled = live) { c -> NoteIcon(c) }
                     val subsOn = st.subs.any { it.selected }
@@ -516,9 +516,9 @@ private fun Controls(
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GlassIconButton({ onChapter(-1) }, size = 48.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = true) }
+                    GlassIconButton({ onChapter(-1) }, size = 42.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = true) }
                     BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn), enabled = live)
-                    GlassIconButton({ onChapter(1) }, size = 48.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = false) }
+                    GlassIconButton({ onChapter(1) }, size = 42.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = false) }
                 }
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassIconButton({ onPanel(Panel.INFO) }, size = SIDE_BTN, enabled = live) { c -> TuneIcon(c) }
@@ -744,7 +744,7 @@ private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, I
 private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     FocusBox(
         onClick = onClick,
-        modifier = modifier.size(64.dp),
+        modifier = modifier.size(52.dp),
         focusEnabled = enabled,
         shape = CircleShape,
         focusScale = 1.1f,
@@ -755,7 +755,7 @@ private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifi
         Box(Modifier.fillMaxSize().border(2.dp, G.red, CircleShape), contentAlignment = Alignment.Center) {
             // PlayGlyph's path already sits right of its box centre (about 1.5dp at this size), which
             // is the usual optical correction for a triangle; an extra offset pushed it visibly off.
-            if (paused) PlayGlyph(G.red, 26.dp) else PauseIcon(G.red)
+            if (paused) PlayGlyph(G.red, 21.dp) else PauseIcon(G.red)
         }
     }
 }
@@ -800,9 +800,9 @@ private fun GlassIconButton(
 
 @Composable
 private fun PauseIcon(c: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        Box(Modifier.size(5.dp, 21.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
-        Box(Modifier.size(5.dp, 21.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(5.dp, 17.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+        Box(Modifier.size(5.dp, 17.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
     }
 }
 
