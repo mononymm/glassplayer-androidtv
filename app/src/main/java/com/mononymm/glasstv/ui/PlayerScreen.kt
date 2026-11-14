@@ -53,6 +53,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mononymm.glasstv.plex.EngineChoice
@@ -63,9 +65,8 @@ import com.mononymm.glasstv.player.TrackInfo
 import kotlinx.coroutines.delay
 import java.util.Date
 
-private enum class Panel { AUDIO, SUBS, SPEED, INFO }
+private enum class Panel { AUDIO, SUBS, INFO }
 
-private val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
 @Composable
 fun PlayerScreen(item: Item, fromStart: Boolean) {
@@ -336,64 +337,83 @@ private fun Controls(
 ) {
     val ctx = LocalContext.current
     val item = session.item
-    val engine = session.engine
+    val hasChapters = (session.info?.chapters?.size ?: 0) > 1
     Box(Modifier.fillMaxSize()) {
-        // Top: title over the video, clock on the right.
+        // Soft scrims so white text reads over bright video.
+        Box(Modifier.fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color(0x59000000), Color.Transparent))))
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(260.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))),
+        )
+
+        // Centre: chapter back, play/pause, chapter forward.
         Row(
-            Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent)))
-                .padding(start = 56.dp, end = 56.dp, top = 32.dp, bottom = 48.dp),
-            verticalAlignment = Alignment.Top,
+            Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(40.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(if (item.isEpisode) item.showTitle ?: item.title else item.title, style = G.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (item.isEpisode) Text(listOfNotNull(item.episodeTag, item.title).joinToString("  ·  "), style = G.label.copy(color = G.dim))
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                val tf = DateFormat.getTimeFormat(ctx)
-                val left = ((st.durationMs - st.positionMs) / st.speed.coerceAtLeast(0.1f)).toLong().coerceAtLeast(0)
-                Text(tf.format(Date(now)), style = G.h2)
-                if (st.durationMs > 0) Text("ends ${tf.format(Date(now + left))}", style = G.small)
-                Spacer(Modifier.height(4.dp))
-                session.info?.summary?.takeIf { it.isNotBlank() }?.let { Text(it, style = G.small.copy(color = G.faint)) }
-            }
+            GlassIconButton({ onChapter(-1) }, size = 56.dp, dim = !hasChapters) { c -> ChapterIcon(c, back = true) }
+            BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn))
+            GlassIconButton({ onChapter(1) }, size = 56.dp, dim = !hasChapters) { c -> ChapterIcon(c, back = false) }
         }
 
-        // Bottom: time, slim bar, buttons.
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
-                .padding(start = 56.dp, end = 56.dp, top = 60.dp, bottom = 30.dp),
-        ) {
-            val shown = scrubMs ?: st.positionMs
-            Text("${fmt(shown)}  /  ${fmt(st.durationMs)}", style = G.label)
-            Spacer(Modifier.height(8.dp))
-            SeekBar(shown, st.durationMs, session.info?.chapters?.map { it.startMs } ?: emptyList(), onScrub)
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundButton(onClick = { onChapter(-1) }) { c -> ChapterGlyph(c, back = true) }
-                RoundButton(onClick = onToggle, modifier = Modifier.focusRequester(playBtn), big = true) { c ->
-                    if (st.paused) PlayGlyph(c, 18.dp) else PauseGlyph(c)
+        // Bottom: title on the video, then one thin glass bar.
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 48.dp, end = 48.dp, bottom = 28.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (item.isEpisode) item.showTitle ?: item.title else item.title,
+                        style = G.h2.copy(fontSize = 20.sp, shadow = textShadow), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (item.isEpisode) {
+                        Text(
+                            listOfNotNull(item.episodeTag, item.title).joinToString("  ·  "),
+                            style = G.label.copy(color = Color(0xD9FFFFFF), shadow = textShadow), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                RoundButton(onClick = { onChapter(1) }) { c -> ChapterGlyph(c, back = false) }
-                Spacer(Modifier.weight(1f))
-                Pill("Audio", { onPanel(Panel.AUDIO) })
-                Pill("Subtitles", { onPanel(Panel.SUBS) })
-                Pill(if (st.speed == 1f) "Speed" else fmtSpeed(st.speed), { onPanel(Panel.SPEED) })
-                Pill(if (engine?.choice == EngineChoice.MPV) "mpv" else "ExoPlayer", { onPanel(Panel.INFO) })
-                session.next?.let { n -> Pill("Next  ${n.episodeTag ?: ""}".trim(), { session.play(n) }) }
+                Column(horizontalAlignment = Alignment.End) {
+                    val tf = DateFormat.getTimeFormat(ctx)
+                    val left = ((st.durationMs - st.positionMs) / st.speed.coerceAtLeast(0.1f)).toLong().coerceAtLeast(0)
+                    val clock = tf.format(Date(now)) + if (st.durationMs > 0) "  ·  ends ${tf.format(Date(now + left))}" else ""
+                    Text(clock, style = G.small.copy(color = Color(0xE6FFFFFF), fontWeight = FontWeight.SemiBold, shadow = textShadow))
+                    session.info?.summary?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = G.small.copy(color = Color(0xCCFFFFFF), fontSize = 11.sp, shadow = textShadow), maxLines = 1)
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth().height(52.dp).clip(G.pillShape).background(Color(0x24FFFFFF))
+                    .border(1.dp, Color(0x2EFFFFFF), G.pillShape).padding(start = 22.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val shown = scrubMs ?: st.positionMs
+                Text(fmt(shown), style = G.label.copy(fontSize = 13.sp))
+                Text(" / ${fmt(st.durationMs)}", style = G.label.copy(fontSize = 13.sp, color = Color(0x99FFFFFF)))
+                Spacer(Modifier.width(16.dp))
+                SeekBar(shown, st.durationMs, session.info?.chapters?.map { it.startMs } ?: emptyList(), onScrub, Modifier.weight(1f))
+                Spacer(Modifier.width(14.dp))
+                Box(Modifier.size(1.dp, 22.dp).background(Color(0x40FFFFFF)))
+                Spacer(Modifier.width(6.dp))
+                GlassIconButton({ onPanel(Panel.AUDIO) }, size = 40.dp, plain = true) { c -> NoteIcon(c) }
+                val subsOn = st.subs.any { it.selected }
+                GlassIconButton({ onPanel(Panel.SUBS) }, size = 40.dp, plain = true, tint = if (subsOn) G.red else null) { c -> CaptionsIcon(c, filled = subsOn) }
+                GlassIconButton({ onPanel(Panel.INFO) }, size = 40.dp, plain = true) { c -> InfoIcon(c) }
             }
         }
     }
 }
 
+private val textShadow = androidx.compose.ui.graphics.Shadow(Color(0xD9000000), androidx.compose.ui.geometry.Offset(0f, 1.5f), 6f)
+
 @Composable
-private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, Int) -> Unit) {
+private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
     val src = remember { MutableInteractionSource() }
     val focused by src.collectIsFocusedAsState()
     Box(
-        Modifier
-            .fillMaxWidth()
-            .height(18.dp)
+        modifier
+            .height(30.dp)
             .onKeyEvent { ev ->
                 val k = ev.nativeKeyEvent
                 when (k.keyCode) {
@@ -406,6 +426,117 @@ private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, I
         contentAlignment = Alignment.CenterStart,
     ) {
         SeekLine(pos, dur, chapters, focused)
+    }
+}
+
+/** The big play/pause button: red outline glyph in a glass circle with a red rim. */
+@Composable
+private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FocusBox(
+        onClick = onClick,
+        modifier = modifier.size(76.dp),
+        shape = CircleShape,
+        focusScale = 1.1f,
+        idleColor = Color(0x1FFFFFFF),
+        focusColor = Color(0x33FFFFFF),
+        glow = true,
+    ) { _ ->
+        Box(Modifier.fillMaxSize().border(2.dp, G.red, CircleShape), contentAlignment = Alignment.Center) {
+            if (paused) PlayGlyph(G.red, 30.dp, Modifier.offset(x = 2.dp)) else PauseIcon(G.red)
+        }
+    }
+}
+
+@Composable
+private fun GlassIconButton(
+    onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp,
+    dim: Boolean = false,
+    plain: Boolean = false,
+    tint: Color? = null,
+    icon: @Composable (Color) -> Unit,
+) {
+    FocusBox(
+        onClick = onClick,
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        focusScale = 1.12f,
+        idleColor = if (plain) Color.Transparent else Color(0x1FFFFFFF),
+        focusColor = Color(0x40FFFFFF),
+        glow = !plain,
+    ) { f ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            icon(tint ?: if (dim && !f) Color(0x59FFFFFF) else Color.White)
+        }
+    }
+}
+
+@Composable
+private fun PauseIcon(c: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(Modifier.size(5.dp, 24.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+        Box(Modifier.size(5.dp, 24.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+    }
+}
+
+/** Like SF Symbols backward.end.fill / forward.end.fill. */
+@Composable
+private fun ChapterIcon(c: Color, back: Boolean) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val h = size.height
+        fun x(v: Float) = if (back) v * w else w - v * w
+        drawRoundRect(c, topLeft = androidx.compose.ui.geometry.Offset(if (back) w * 0.12f else w * 0.76f, h * 0.18f),
+            size = androidx.compose.ui.geometry.Size(w * 0.12f, h * 0.64f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.06f))
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(x(0.88f), h * 0.18f); lineTo(x(0.88f), h * 0.82f); lineTo(x(0.30f), h * 0.5f); close()
+        }
+        drawPath(p, c)
+    }
+}
+
+/** Like SF Symbols music.note. */
+@Composable
+private fun NoteIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val h = size.height
+        drawOval(c, topLeft = androidx.compose.ui.geometry.Offset(w * 0.18f, h * 0.62f), size = androidx.compose.ui.geometry.Size(w * 0.36f, h * 0.28f))
+        drawRect(c, topLeft = androidx.compose.ui.geometry.Offset(w * 0.46f, h * 0.12f), size = androidx.compose.ui.geometry.Size(w * 0.09f, h * 0.66f))
+        val flag = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.50f, h * 0.10f); lineTo(w * 0.84f, h * 0.22f); lineTo(w * 0.84f, h * 0.38f); lineTo(w * 0.50f, h * 0.27f); close()
+        }
+        drawPath(flag, c)
+    }
+}
+
+/** Like SF Symbols captions.bubble (filled when subtitles are on). */
+@Composable
+private fun CaptionsIcon(c: Color, filled: Boolean) {
+    androidx.compose.foundation.Canvas(Modifier.size(21.dp)) {
+        val w = size.width
+        val h = size.height
+        val sw = w * 0.09f
+        val bubble = androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(w * 0.06f, h * 0.14f, w * 0.94f, h * 0.72f, androidx.compose.ui.geometry.CornerRadius(w * 0.16f)))
+            moveTo(w * 0.26f, h * 0.70f); lineTo(w * 0.24f, h * 0.90f); lineTo(w * 0.46f, h * 0.70f); close()
+        }
+        if (filled) drawPath(bubble, c) else drawPath(bubble, c, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+        val line = if (filled) Color.Black.copy(alpha = 0.75f) else c
+        drawLine(line, androidx.compose.ui.geometry.Offset(w * 0.24f, h * 0.36f), androidx.compose.ui.geometry.Offset(w * 0.62f, h * 0.36f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(line, androidx.compose.ui.geometry.Offset(w * 0.24f, h * 0.52f), androidx.compose.ui.geometry.Offset(w * 0.76f, h * 0.52f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun InfoIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val sw = w * 0.09f
+        drawCircle(c, radius = w * 0.42f, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+        drawCircle(c, radius = w * 0.06f, center = androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.30f))
+        drawLine(c, androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.46f), androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.72f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
     }
 }
 
@@ -436,45 +567,6 @@ private fun SeekLine(pos: Long, dur: Long, chapters: List<Long>?, focused: Boole
 }
 
 @Composable
-private fun RoundButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    big: Boolean = false,
-    content: @Composable (Color) -> Unit,
-) {
-    FocusBox(
-        onClick = onClick,
-        modifier = modifier.size(if (big) 54.dp else 42.dp),
-        shape = CircleShape,
-        focusScale = 1.1f,
-        idleColor = Color(0x26FFFFFF),
-        focusColor = Color(0x40FFFFFF),
-        glow = true,
-    ) { f ->
-        Box(Modifier.fillMaxSize().border(if (big) 1.5.dp else 0.dp, if (big) G.red else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
-            content(if (big) G.red else if (f) Color.White else G.dim)
-        }
-    }
-}
-
-@Composable
-private fun PauseGlyph(c: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        Box(Modifier.size(4.dp, 16.dp).clip(G.pillShape).background(c))
-        Box(Modifier.size(4.dp, 16.dp).clip(G.pillShape).background(c))
-    }
-}
-
-@Composable
-private fun ChapterGlyph(c: Color, back: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        if (back) Box(Modifier.size(2.dp, 12.dp).background(c))
-        Text(if (back) "◀" else "▶", style = G.small.copy(color = c))
-        if (!back) Box(Modifier.size(2.dp, 12.dp).background(c))
-    }
-}
-
-@Composable
 private fun SidePanel(p: Panel, session: PlaybackSession, st: PlayerState?, first: FocusRequester, close: () -> Unit) {
     val engine = session.engine
     data class PRow(val label: String, val detail: String?, val checked: Boolean, val act: () -> Unit)
@@ -483,7 +575,6 @@ private fun SidePanel(p: Panel, session: PlaybackSession, st: PlayerState?, firs
         Panel.AUDIO -> (st?.audio ?: emptyList()).map { t: TrackInfo -> PRow(t.label, null, t.selected) { engine?.selectAudio(t.id) } }
         Panel.SUBS -> listOf(PRow("Off", null, st?.subs?.none { it.selected } == true) { engine?.selectSub(null) }) +
             (st?.subs ?: emptyList()).map { t -> PRow(t.label, null, t.selected) { engine?.selectSub(t.id) } }
-        Panel.SPEED -> speeds.map { s -> PRow(fmtSpeed(s), null, st?.speed == s) { engine?.setSpeed(s) } }
         Panel.INFO -> {
             val other = if (engine?.choice == EngineChoice.MPV) "ExoPlayer" else "mpv"
             listOf(
@@ -497,7 +588,7 @@ private fun SidePanel(p: Panel, session: PlaybackSession, st: PlayerState?, firs
         }
     }
     val title = when (p) {
-        Panel.AUDIO -> "Audio"; Panel.SUBS -> "Subtitles"; Panel.SPEED -> "Speed"; Panel.INFO -> "Player"
+        Panel.AUDIO -> "Audio"; Panel.SUBS -> "Subtitles"; Panel.INFO -> "Player"
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
         Column(

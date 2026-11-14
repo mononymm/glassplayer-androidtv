@@ -137,10 +137,10 @@ fun ItemRow(
     wide: Boolean,
     onFocus: (Item) -> Unit,
 ) {
-    Column(Modifier.padding(bottom = 18.dp)) {
-        Text(title, style = G.h2, modifier = Modifier.padding(start = 48.dp, bottom = 10.dp))
+    Column(Modifier.padding(bottom = 4.dp)) {
+        Text(title, style = G.h2, modifier = Modifier.padding(start = 48.dp))
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 14.dp),
         ) {
             items(items, key = { it.ratingKey }) {

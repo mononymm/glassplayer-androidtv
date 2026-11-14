@@ -162,7 +162,7 @@ fun DetailScreen(start: Item) {
                 }
                 item {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 56.dp, vertical = 10.dp),
+                        contentPadding = PaddingValues(horizontal = 56.dp, vertical = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(episodes, key = { it.ratingKey }) { ep ->

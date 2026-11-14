@@ -59,7 +59,17 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         m.setOptionString("tls-verify", if (ca != null) "yes" else "no")
         ca?.let { m.setOptionString("tls-ca-file", it.absolutePath) }
         m.setOptionString("input-default-bindings", "no")
+        // No built-in mpv UI at all: Glass draws its own controls.
         m.setOptionString("osc", "no")
+        m.setOptionString("load-scripts", "no")
+        m.setOptionString("load-stats-overlay", "no")
+        m.setOptionString("load-console", "no")
+        m.setOptionString("load-osd-console", "no")
+        m.setOptionString("load-select", "no")
+        m.setOptionString("load-positioning", "no")
+        m.setOptionString("load-commands", "no")
+        m.setOptionString("osd-bar", "no")
+        m.setOptionString("osd-on-seek", "no")
         m.setOptionString("osd-level", "0")
         m.setOptionString("keep-open", "yes")
         m.setOptionString("idle", "yes")

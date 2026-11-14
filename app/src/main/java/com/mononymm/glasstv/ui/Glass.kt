@@ -35,7 +35,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -103,12 +106,13 @@ fun FocusBox(
     val src = remember { MutableInteractionSource() }
     val focused by src.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) focusScale else 1f, tween(160), label = "scale")
+    val glowA by animateFloatAsState(if (focused && glow) 1f else 0f, tween(200), label = "glow")
     var longFired by remember { mutableStateOf(false) }
     LaunchedEffect(focused) { if (focused) onFocus?.invoke() }
     Box(
         modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (focused && glow) 18.dp else 0.dp, shape, clip = false, ambientColor = G.red, spotColor = G.red)
+            .glow(shape, glowA)
             .clip(shape)
             .background(if (focused) focusColor else idleColor)
             .border(if (focused) 2.dp else 1.dp, if (focused) Color(0xE6FFFFFF) else G.rim, shape)
@@ -290,4 +294,46 @@ suspend fun androidx.compose.ui.focus.FocusRequester.focusSoon() {
         kotlinx.coroutines.delay(40)
         if (runCatching { requestFocus() }.isSuccess) return
     }
+}
+
+
+/**
+ * Soft red halo centred on the element (Android's coloured shadows fall below
+ * the view instead of around it, which looked misplaced).
+ */
+fun Modifier.glow(shape: Shape, strength: Float, color: Color = G.red, radius: Dp = 16.dp): Modifier =
+    if (strength <= 0f) this else drawBehind {
+        val r = radius.toPx()
+        val steps = 8
+        for (i in steps downTo 1) {
+            val d = r * i / steps
+            val outline = shape.createOutline(Size(size.width + 2 * d, size.height + 2 * d), layoutDirection, this)
+            translate(-d, -d) {
+                drawOutline(outline, color.copy(alpha = 0.055f * strength * (steps - i + 1) / steps * 2f))
+            }
+        }
+    }
+
+@Composable
+fun Logo(modifier: Modifier = Modifier) {
+    Image(
+        androidx.compose.ui.res.painterResource(com.mononymm.glasstv.R.drawable.logo),
+        contentDescription = "Glass",
+        modifier = modifier,
+        contentScale = ContentScale.Fit,
+    )
+}
+
+/** Centered frosted panel used by the sign-in and server screens. */
+@Composable
+fun GlassPanel(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    androidx.compose.foundation.layout.Column(
+        modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0x14FFFFFF))
+            .border(1.dp, G.rim, RoundedCornerShape(24.dp))
+            .padding(horizontal = 40.dp, vertical = 34.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content,
+    )
 }

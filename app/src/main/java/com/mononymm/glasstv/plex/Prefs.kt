@@ -56,7 +56,7 @@ class Prefs(ctx: Context) {
 
     /** Player for files that don't need either engine specifically (no DV, no styled subs). */
     var defaultEngine: EngineChoice
-        get() = EngineChoice.of(p.getString("defaultEngine", EngineChoice.EXO.name)).let { if (it == EngineChoice.AUTO) EngineChoice.EXO else it }
+        get() = EngineChoice.of(p.getString("defaultEngine", EngineChoice.MPV.name)).let { if (it == EngineChoice.AUTO) EngineChoice.MPV else it }
         set(v) = p.edit().putString("defaultEngine", v.name).apply()
 
     fun engineForLibrary(sectionId: String?): EngineChoice =

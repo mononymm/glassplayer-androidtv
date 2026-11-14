@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -109,7 +110,7 @@ fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 210, content: @Compo
                 if (art != null) {
                     NetImage(
                         app.plex.image(art, 1280, 720),
-                        Modifier.align(Alignment.TopEnd).fillMaxWidth(0.72f).fillMaxHeight(0.72f),
+                        Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                         alignment = Alignment.TopCenter,
                     )
@@ -158,7 +159,7 @@ fun TabBar(selected: String) {
         Modifier.fillMaxWidth().padding(start = 40.dp, end = 40.dp, top = 20.dp, bottom = 6.dp).heightIn(min = 40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Glass", style = G.h2.copy(color = G.red), modifier = Modifier.padding(end = 18.dp, start = 8.dp))
+        Logo(Modifier.padding(start = 8.dp, end = 18.dp).size(34.dp))
         LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item(key = "home") {
                 Pill("Home", { if (selected != "home") app.replaceAll(Screen.Home) }, selected = selected == "home")

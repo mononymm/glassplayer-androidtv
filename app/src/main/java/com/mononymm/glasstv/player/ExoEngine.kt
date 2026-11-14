@@ -119,6 +119,8 @@ class ExoEngine(private val ctx: Context, private val prefs: Prefs) : Engine {
         val root = FrameLayout(ctx)
         val pv = PlayerView(ctx).apply {
             useController = false
+            controllerAutoShow = false
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             setShutterBackgroundColor(Color.BLACK)
             setKeepContentOnPlayerReset(true)
             player = this@ExoEngine.player

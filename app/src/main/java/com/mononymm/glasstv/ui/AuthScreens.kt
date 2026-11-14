@@ -1,6 +1,15 @@
 package com.mononymm.glasstv.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,31 +68,52 @@ fun SignInScreen() {
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Glass", style = G.title.copy(fontSize = 44.sp))
-            Spacer(Modifier.height(28.dp))
-            Text("On your phone or computer, go to", style = G.body)
-            Spacer(Modifier.height(6.dp))
-            Text("plex.tv/link", style = G.h2.copy(fontSize = 26.sp, color = G.red))
-            Spacer(Modifier.height(22.dp))
-            Text("and enter this code", style = G.body)
+        GlassPanel(Modifier.width(560.dp)) {
+            Logo(Modifier.size(64.dp))
             Spacer(Modifier.height(14.dp))
-            Box(
-                Modifier.padding(4.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    code ?: "· · · ·",
-                    style = G.title.copy(fontSize = 64.sp, letterSpacing = 14.sp, fontWeight = FontWeight.Black),
-                )
+            Text("Sign in with Plex", style = G.title.copy(fontSize = 26.sp))
+            Spacer(Modifier.height(22.dp))
+            Step(1, "On your phone or computer, open", "plex.tv/link")
+            Spacer(Modifier.height(10.dp))
+            Step(2, "Enter this code", null)
+            Spacer(Modifier.height(18.dp))
+            val chars = (code ?: "    ").padEnd(4).take(4)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                chars.forEach { ch ->
+                    Box(
+                        Modifier.size(64.dp, 78.dp).clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x1FFFFFFF)).border(1.dp, G.rim, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(if (ch == ' ') "·" else ch.toString(), style = G.title.copy(fontSize = 38.sp, fontWeight = FontWeight.Bold))
+                    }
+                }
             }
-            error?.let {
-                Spacer(Modifier.height(18.dp))
-                Text(it, style = G.body)
-                Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(18.dp))
+            Text(
+                error ?: "This screen moves on by itself once you've entered the code.",
+                style = G.small, textAlign = TextAlign.Center,
+            )
+            if (error != null) {
+                Spacer(Modifier.height(14.dp))
                 ActionButton("Get a new code", { attempt++ }, Modifier.focusRequester(retry), primary = true)
                 LaunchedEffect(Unit) { retry.focusSoon() }
             }
+        }
+    }
+}
+
+@Composable
+private fun Step(n: Int, text: String, highlight: String?) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(26.dp).clip(CircleShape).background(G.red), contentAlignment = Alignment.Center) {
+            Text("$n", style = G.small.copy(color = Color.White, fontWeight = FontWeight.Bold))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = G.body.copy(color = G.text))
+        if (highlight != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(highlight, style = G.h2.copy(color = G.red))
         }
     }
 }
@@ -120,34 +148,39 @@ fun ServersScreen() {
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(Modifier.width(520.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Choose a server", style = G.title)
+        GlassPanel(Modifier.width(560.dp)) {
+            Logo(Modifier.size(56.dp))
+            Spacer(Modifier.height(12.dp))
+            Text("Choose a server", style = G.title.copy(fontSize = 26.sp))
             Spacer(Modifier.height(20.dp))
             val list = servers
-            if (list == null) Text("Looking for servers…", style = G.body)
-            else if (list.isEmpty()) Text("No Plex servers on this account.", style = G.body)
-            else LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(list, key = { it.id }) { s ->
-                    FocusBox(
-                        onClick = { scope.launch { choose(app.plex, s) } },
-                        modifier = Modifier.fillMaxWidth().let { if (s == list.first()) it.focusRequester(first) else it },
-                        focusScale = 1.03f,
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(s.name, style = G.h2)
-                            Text(
-                                if (s.connections.any { it.local }) "On your network" else "Remote",
-                                style = G.small,
-                            )
+            when {
+                list == null -> Text("Looking for servers…", style = G.body)
+                list.isEmpty() -> Text("No Plex servers on this account.", style = G.body)
+                else -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    list.forEachIndexed { i, s ->
+                        FocusBox(
+                            onClick = { scope.launch { choose(app.plex, s) } },
+                            modifier = Modifier.fillMaxWidth().height(64.dp).let { if (i == 0) it.focusRequester(first) else it },
+                            shape = RoundedCornerShape(14.dp),
+                            focusScale = 1.03f,
+                        ) { f ->
+                            Row(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(s.name, style = G.h2)
+                                    Text(if (s.connections.any { it.local }) "On your network" else "Remote", style = G.small)
+                                }
+                                if (f) PlayGlyph(G.red, 16.dp)
+                            }
                         }
                     }
                 }
             }
             status?.let {
-                Spacer(Modifier.height(16.dp))
-                Text(it, style = G.body)
+                Spacer(Modifier.height(14.dp))
+                Text(it, style = G.small, textAlign = TextAlign.Center)
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
             Pill("Sign out", { app.signOut() })
         }
     }

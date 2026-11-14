@@ -76,7 +76,7 @@ fun LibraryScreen(section: Section) {
             val list = items ?: emptyList()
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(POSTER_W.dp),
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 8.dp, bottom = 48.dp),
+                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.fillMaxSize(),
