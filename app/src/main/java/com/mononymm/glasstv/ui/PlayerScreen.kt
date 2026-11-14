@@ -527,7 +527,8 @@ private fun Controls(
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GlassIconButton({ onPanel(Panel.INFO) }, size = SIDE_BTN, enabled = live) { c -> TuneIcon(c) }
                     val hasNext = session.next != null
-                    GlassIconButton(onNextEpisode, size = SIDE_BTN, red = hasNext, dim = !hasNext, enabled = live && hasNext) { c -> NextEpisodeIcon(c) }
+                    // Same look as subtitles when on: plain glass bubble, red icon.
+                    GlassIconButton(onNextEpisode, size = SIDE_BTN, tint = if (hasNext) G.red else null, dim = !hasNext, enabled = live && hasNext) { c -> NextEpisodeIcon(c) }
                 }
             }
         }
