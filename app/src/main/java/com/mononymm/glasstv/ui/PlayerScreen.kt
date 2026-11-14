@@ -686,7 +686,7 @@ private fun PlayerTile(
             if (current && !f) Box(Modifier.matchParentSize().border(2.dp, G.red, G.cardShape))
             if (f && !current) {
                 Box(Modifier.align(Alignment.Center).size(46.dp).clip(CircleShape).background(Color(0x66000000)), contentAlignment = Alignment.Center) {
-                    PlayGlyph(G.red, 20.dp, Modifier.offset(x = 1.5.dp))
+                    PlayGlyph(G.red, 20.dp)
                 }
             }
             if (watched) WatchedBadge(Modifier.align(Alignment.TopEnd).padding(6.dp))
@@ -753,8 +753,9 @@ private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifi
         glow = true,
     ) { _ ->
         Box(Modifier.fillMaxSize().border(2.dp, G.red, CircleShape), contentAlignment = Alignment.Center) {
-            // The triangle's visual centre sits left of its box, so nudge it right.
-            if (paused) PlayGlyph(G.red, 26.dp, Modifier.offset(x = 2.dp)) else PauseIcon(G.red)
+            // PlayGlyph's path already sits right of its box centre (about 1.5dp at this size), which
+            // is the usual optical correction for a triangle; an extra offset pushed it visibly off.
+            if (paused) PlayGlyph(G.red, 26.dp) else PauseIcon(G.red)
         }
     }
 }

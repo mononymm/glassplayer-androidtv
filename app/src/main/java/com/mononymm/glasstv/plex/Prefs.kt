@@ -52,8 +52,8 @@ class Prefs(ctx: Context) {
 
     /** mpv upscaling with Lanczos EWA instead of bilinear (falls back on its own if frames drop). */
     var sharpScaling: Boolean
-        get() = p.getBoolean("sharpScaling", true)
-        set(v) = p.edit().putBoolean("sharpScaling", v).apply()
+        get() = p.getBoolean("sharpScaling2", false)
+        set(v) = p.edit().putBoolean("sharpScaling2", v).apply()
 
     var upNext: Boolean
         get() = p.getBoolean("upNext", true)

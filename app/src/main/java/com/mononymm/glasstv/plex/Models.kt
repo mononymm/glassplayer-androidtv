@@ -160,6 +160,8 @@ data class MediaInfo(
     val bitrateKbps: Int?,
     val sizeBytes: Long? = null,
     val audioChannels: Int? = null,
+    /** File name without folder or extension (sent to the server's subtitle search). */
+    val fileName: String? = null,
 ) {
     val hasStyledSubs get() = subs.any { it.styled }
 
@@ -225,6 +227,7 @@ data class MediaInfo(
                 bitrateKbps = media.int("bitrate"),
                 sizeBytes = part.long("size"),
                 audioChannels = audio?.int("channels") ?: media.int("audioChannels"),
+                fileName = part.str("file")?.substringAfterLast('/')?.substringAfterLast('\\')?.substringBeforeLast('.'),
             )
         }
     }

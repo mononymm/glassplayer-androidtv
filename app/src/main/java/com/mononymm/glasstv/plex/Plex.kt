@@ -180,8 +180,9 @@ class Plex(val prefs: Prefs, private val version: String) {
     // ---------- subtitle search (Plex's own, backed by OpenSubtitles) ----------
 
     /** [lang] is a two-letter code ("en"). Best matches first. */
-    suspend fun searchSubtitles(ratingKey: String, lang: String): List<SubResult> {
-        val o = get("/library/metadata/$ratingKey/subtitles?language=${enc(lang)}&hearingImpaired=0&forced=0")
+    suspend fun searchSubtitles(ratingKey: String, lang: String, title: String? = null): List<SubResult> {
+        val t = title?.takeIf { it.isNotBlank() }?.let { "&title=${enc(it)}" } ?: ""
+        val o = get("/library/metadata/$ratingKey/subtitles?language=${enc(lang)}&hearingImpaired=0&forced=0$t")
         return o.container().arr("Stream").map { s ->
             SubResult(
                 key = s.str("key") ?: "",

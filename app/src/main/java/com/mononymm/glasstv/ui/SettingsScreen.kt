@@ -85,7 +85,7 @@ fun SettingsScreen() {
                 }
             }
             item {
-                SettingRow("Sharper scaling (mpv)", "Lanczos EWA instead of bilinear when mpv enlarges the picture. Turns itself off for a file if frames start dropping.", if (sharp) "On" else "Off") {
+                SettingRow("Sharper scaling (mpv)", "Lanczos EWA instead of bilinear when mpv enlarges the picture. Heavy for TV hardware: can stutter at the start. Turns itself off for a file if frames keep dropping.", if (sharp) "On" else "Off") {
                     sharp = !sharp; p.sharpScaling = sharp
                 }
             }

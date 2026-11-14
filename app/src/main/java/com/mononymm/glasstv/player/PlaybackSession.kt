@@ -141,7 +141,30 @@ class PlaybackSession(
         withContext(Dispatchers.IO) { runCatching { plex.timeline(it, state, pos, dur) } }
     }
 
-    suspend fun searchSubtitles(lang: String): List<SubResult> = plex.searchSubtitles(item.ratingKey, lang)
+    /**
+     * Searches with the file name (as Plex's own apps do), then drops results that name a
+     * different episode. Results with no episode number in their name are kept.
+     */
+    suspend fun searchSubtitles(lang: String): List<SubResult> {
+        val cur = item
+        val all = plex.searchSubtitles(cur.ratingKey, lang, info?.fileName)
+        val season = cur.seasonIndex
+        val episode = cur.index
+        if (!cur.isEpisode || season == null || episode == null) return all
+        return all.filter { r ->
+            val tag = episodeIn(r.name) ?: return@filter true
+            tag.first == season && tag.second == episode
+        }
+    }
+
+    private val sxe = Regex("""(?i)(?:^|[^a-z0-9])s(\d{1,2})[ ._-]*e(\d{1,3})(?![0-9])""")
+    private val nxn = Regex("""(?:^|[^0-9])(\d{1,2})x(\d{2,3})(?![0-9])""")
+
+    private fun episodeIn(name: String): Pair<Int, Int>? {
+        sxe.find(name)?.let { return it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+        nxn.find(name)?.let { return it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+        return null
+    }
 
     /** Has Plex download [r], then adds it to the player and switches to it. */
     suspend fun downloadSubtitle(r: SubResult): Boolean {
