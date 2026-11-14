@@ -133,34 +133,38 @@ private fun letterOf(item: Item?): Char? {
 private val LETTERS = listOf('#') + ('A'..'Z')
 
 /**
- * Where you are in the library: a thin track with a red fill, and for the Title sort the
- * letters # A–Z with the current one marked.
+ * Where you are in the library. Title sort: the letters # A-Z in one column, with a pill
+ * sitting on the current letter. Other sorts: a thin track with a short thumb, like a
+ * normal scroll bar.
  */
 @Composable
 private fun ScrollBar(frac: Float, letter: Char?, modifier: Modifier) {
     val measurer = rememberTextMeasurer()
     val small = TextStyle(color = Color(0x6EF4F4F6), fontSize = 9.sp, fontWeight = FontWeight.Medium)
-    val big = TextStyle(color = Color(0xFF0B0B0F), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    val big = TextStyle(color = Color(0xFF0B0B0F), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     Canvas(modifier) {
         val h = size.height
         val cx = size.width / 2
-        val trackX = cx + 14.dp.toPx()
-        val tw = 3.dp.toPx()
-        drawRoundRect(Color(0x28FFFFFF), Offset(trackX - tw / 2, 0f), Size(tw, h), CornerRadius(tw / 2))
-        drawRoundRect(G.red, Offset(trackX - tw / 2, 0f), Size(tw, h * frac.coerceIn(0f, 1f)), CornerRadius(tw / 2))
-        if (letter != null) {
-            val step = h / LETTERS.size
-            LETTERS.forEachIndexed { i, ch ->
-                val y = step * (i + 0.5f)
-                if (ch == letter) {
-                    drawCircle(Color(0xF2F4F4F6), 8.dp.toPx(), Offset(cx, y))
-                    val t = measurer.measure(ch.toString(), big)
-                    drawText(t, topLeft = Offset(cx - t.size.width / 2f, y - t.size.height / 2f))
-                } else {
-                    val t = measurer.measure(ch.toString(), small)
-                    drawText(t, topLeft = Offset(cx - t.size.width / 2f, y - t.size.height / 2f))
-                }
-            }
+        if (letter == null) {
+            val tw = 3.dp.toPx()
+            val thumbW = 5.dp.toPx()
+            val thumbH = 32.dp.toPx()
+            drawRoundRect(Color(0x28FFFFFF), Offset(cx - tw / 2, 0f), Size(tw, h), CornerRadius(tw / 2))
+            val y = (h - thumbH) * frac.coerceIn(0f, 1f)
+            drawRoundRect(Color(0xE6F4F4F6), Offset(cx - thumbW / 2, y), Size(thumbW, thumbH), CornerRadius(thumbW / 2))
+            return@Canvas
+        }
+        val step = h / LETTERS.size
+        val cur = LETTERS.indexOf(letter).coerceAtLeast(0)
+        val py = step * (cur + 0.5f)
+        val pw = 20.dp.toPx()
+        val ph = 24.dp.toPx()
+        drawRoundRect(Color(0xF2F4F4F6), Offset(cx - pw / 2, py - ph / 2), Size(pw, ph), CornerRadius(pw / 2))
+        LETTERS.forEachIndexed { i, ch ->
+            if (kotlin.math.abs(i - cur) == 1) return@forEachIndexed // tucked under the pill
+            val t = measurer.measure(ch.toString(), if (i == cur) big else small)
+            val y = step * (i + 0.5f)
+            drawText(t, topLeft = Offset(cx - t.size.width / 2f, y - t.size.height / 2f))
         }
     }
 }
