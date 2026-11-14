@@ -135,10 +135,14 @@ fun ItemRow(
     title: String,
     items: List<Item>,
     wide: Boolean,
+    note: String? = null,
     onFocus: (Item) -> Unit,
 ) {
     Column(Modifier.padding(bottom = 4.dp)) {
-        Text(title, style = G.h2, modifier = Modifier.padding(start = 48.dp))
+        Row(Modifier.padding(start = 48.dp), verticalAlignment = Alignment.Bottom) {
+            Text(title, style = G.h2)
+            note?.let { Text("   $it", style = G.small.copy(color = G.red), modifier = Modifier.padding(bottom = 2.dp)) }
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 48.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 14.dp),

@@ -55,6 +55,16 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("sharpScaling2", false)
         set(v) = p.edit().putBoolean("sharpScaling2", v).apply()
 
+    /** Library keys in the order the side bar shows them (others follow in server order). */
+    var sectionOrder: List<String>
+        get() = (p.getString("sectionOrder", "") ?: "").split(',').filter { it.isNotBlank() }
+        set(v) = p.edit().putString("sectionOrder", v.joinToString(",")).apply()
+
+    /** Home row ids in display order ("cw", "recent:<key>"). */
+    var homeOrder: List<String>
+        get() = (p.getString("homeOrder", "") ?: "").split(',').filter { it.isNotBlank() }
+        set(v) = p.edit().putString("homeOrder", v.joinToString(",")).apply()
+
     var upNext: Boolean
         get() = p.getBoolean("upNext", true)
         set(v) = p.edit().putBoolean("upNext", v).apply()

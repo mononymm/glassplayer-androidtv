@@ -77,6 +77,7 @@ fun GlassMenu(title: String?, entries: List<MenuEntry>, onDismiss: () -> Unit) {
 @Composable
 fun ItemMenu(item: Item, onDismiss: () -> Unit) {
     val app = LocalApp.current
+    val moveRow = LocalRowMove.current
     val scope = app.scope
     val showKey = if (item.isShow) item.ratingKey else item.showKey
     val entries = buildList {
@@ -109,5 +110,6 @@ fun ItemMenu(item: Item, onDismiss: () -> Unit) {
             })
         }
     }
-    GlassMenu(item.showTitle?.takeIf { item.isEpisode }?.let { "$it · ${item.title}" } ?: item.title, entries, onDismiss)
+    val all = if (moveRow != null) entries + MenuEntry("Move this row", "↑ ↓ to move, OK when done") { moveRow() } else entries
+    GlassMenu(item.showTitle?.takeIf { item.isEpisode }?.let { "$it · ${item.title}" } ?: item.title, all, onDismiss)
 }

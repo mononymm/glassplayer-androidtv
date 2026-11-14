@@ -34,6 +34,34 @@ class AppModel(ctx: Context, version: String) {
 
     val stack = mutableStateListOf<Screen>()
     var sections by mutableStateOf<List<Section>>(emptyList())
+    var sectionOrder by mutableStateOf(prefs.sectionOrder)
+    var homeOrder by mutableStateOf(prefs.homeOrder)
+
+    /** Libraries in the user's order; any not yet ordered keep the server's order after them. */
+    val orderedSections: List<Section>
+        get() = sections.sortedBy { s -> sectionOrder.indexOf(s.key).let { if (it < 0) Int.MAX_VALUE else it } }
+
+    fun moveSection(key: String, dir: Int) {
+        val keys = orderedSections.map { it.key }.toMutableList()
+        val i = keys.indexOf(key)
+        val j = i + dir
+        if (i < 0 || j !in keys.indices) return
+        java.util.Collections.swap(keys, i, j)
+        sectionOrder = keys
+        prefs.sectionOrder = keys
+    }
+
+    /** [current] is the row ids as shown now. */
+    fun moveHomeRow(current: List<String>, id: String, dir: Int) {
+        val keys = current.toMutableList()
+        val i = keys.indexOf(id)
+        val j = i + dir
+        if (i < 0 || j !in keys.indices) return
+        java.util.Collections.swap(keys, i, j)
+        homeOrder = keys
+        prefs.homeOrder = keys
+    }
+
     /** Bumped after something changes watched state so screens reload. */
     var refresh by mutableStateOf(0)
 
