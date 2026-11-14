@@ -28,6 +28,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -92,7 +94,11 @@ fun Clock(modifier: Modifier = Modifier) {
 
 private val ClockShadow = androidx.compose.ui.graphics.Shadow(Color(0xCC000000), Offset(0f, 2f), 8f)
 
-private enum class RailIcon { HOME, MOVIES, SHOWS, MUSIC, PHOTOS, OTHER, SEARCH, SETTINGS }
+private enum class RailIcon { HOME, MOVIES, SHOWS, MUSIC, PHOTOS, OTHER, SEARCH, SETTINGS, ALL }
+
+private fun typeLabel(s: Section) = when (s.type) {
+    "movie" -> "Movies"; "show" -> "TV shows"; "artist" -> "Music"; "photo" -> "Photos"; else -> "Other"
+}
 
 private fun iconFor(s: Section) = when (s.type) {
     "movie" -> RailIcon.MOVIES
@@ -131,8 +137,12 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
     val searchReq = remember { FocusRequester() }
     val width by animateDpAsState(if (open) RAIL_OPEN else RAIL_COLLAPSED, tween(200), label = "rail")
 
+    var options by remember { mutableStateOf<Section?>(null) }
+    var showAll by remember { mutableStateOf(false) }
+    // Home, the pinned libraries, then All libraries.
     val entries = listOf(RailEntry("home", RailIcon.HOME, "Home", null)) +
-        app.orderedSections.map { RailEntry(it.key, iconFor(it), it.title, it) }
+        app.pinnedSections.map { RailEntry(it.key, iconFor(it), it.title, it) } +
+        RailEntry("all", RailIcon.ALL, "All libraries", null)
     val pages = maxOf(1, (entries.size + per - 1) / per)
     if (page >= pages) page = pages - 1
 
@@ -156,7 +166,7 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
         if (open) Box(Modifier.fillMaxSize().background(Color(0x73000000)))
         Column(
             Modifier.fillMaxHeight().width(width)
-                .background(if (open) Color(0xFF0E0E13) else Color.Transparent)
+                .background(if (open) Skin.drawer else Color.Transparent)
                 .onPreviewKeyEvent { ev ->
                     if (!open) return@onPreviewKeyEvent false
                     val k = ev.nativeKeyEvent.keyCode
@@ -171,8 +181,8 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
                                 if (down) {
                                     val dir = if (k == AK.KEYCODE_DPAD_UP) -1 else 1
                                     val idx = entries.indexOfFirst { it.key == m }
-                                    // Home stays on top.
-                                    if (idx + dir >= 1 && idx + dir <= entries.lastIndex) {
+                                    // Home stays on top and All libraries at the bottom.
+                                    if (idx + dir >= 1 && idx + dir <= entries.lastIndex - 1) {
                                         app.moveSection(m, dir)
                                         goTo(idx + dir)
                                     }
@@ -249,12 +259,14 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
                                 e.icon, e.label, selected == e.key, open, moving == e.key, slots[slot],
                                 onClick = {
                                     when {
+                                        e.key == "all" -> showAll = true
                                         selected == e.key -> close()
                                         e.section == null -> app.replaceAll(Screen.Home)
                                         else -> { app.replaceAll(Screen.Home); app.go(Screen.Library(e.section)) }
                                     }
                                 },
-                                onLongClick = if (e.section != null) ({ moving = e.key; armed = false }) else null,
+                                onLongClick = if (e.section != null) ({ options = e.section }) else null,
+                                trailing = if (e.key == "all") app.sections.size.toString() else null,
                                 onFocus = { focusIdx = idx; top = null },
                             )
                         }
@@ -266,14 +278,121 @@ fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
             }
             if (open) {
                 Text(
-                    if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library to move it",
+                    if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library for options",
                     style = G.small.copy(color = if (moving != null) G.red else G.faint, fontSize = 11.sp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 24.dp, bottom = 16.dp),
                 )
             } else Spacer(Modifier.height(32.dp))
         }
+        options?.let { sec ->
+            GlassMenu(sec.title, listOf(
+                MenuEntry("Move", "↑ ↓ to move, OK when done") { moving = sec.key; armed = false },
+                MenuEntry("Unpin from side bar", "Still in All libraries") {
+                    val idx = entries.indexOfFirst { it.key == sec.key }
+                    app.setPinned(sec.key, false)
+                    goTo((idx - 1).coerceAtLeast(0))
+                },
+            )) { options = null }
+        }
+        if (showAll) {
+            AllLibraries(
+                onOpen = { s ->
+                    showAll = false
+                    if (selected == s.key) close() else { app.replaceAll(Screen.Home); app.go(Screen.Library(s)) }
+                },
+                onClose = { showAll = false; goTo(entries.lastIndex) },
+            )
+        }
     }
+}
+
+/** Every library, pinned or not: OK opens it, the pin on the right pins or unpins it. */
+@Composable
+private fun AllLibraries(onOpen: (Section) -> Unit, onClose: () -> Unit) {
+    val app = LocalApp.current
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { first.focusSoon() }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
+    Box(
+        Modifier.fillMaxSize().background(Color(0x78000000))
+            .onPreviewKeyEvent { ev ->
+                val k = ev.nativeKeyEvent.keyCode
+                if (k == AK.KEYCODE_BACK || k == AK.KEYCODE_ESCAPE) {
+                    if (ev.type == KeyEventType.KeyUp) onClose()
+                    true
+                } else false
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.width(440.dp).clip(shape).background(Skin.card).border(1.dp, G.rim, shape)
+                .padding(horizontal = 10.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("All libraries", style = G.h2, modifier = Modifier.padding(bottom = 14.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(app.orderedSections.size) { i ->
+                    val s = app.orderedSections[i]
+                    val pinned = s.key !in app.hiddenSections
+                    Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FocusBox(
+                            onClick = { onOpen(s) },
+                            modifier = Modifier.weight(1f).height(40.dp).let { if (i == 0) it.focusRequester(first) else it },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            focusScale = 1.02f,
+                            idleColor = Color.Transparent,
+                            focusColor = Color(0x2EFFFFFF),
+                            idleRim = Color.Transparent,
+                            glow = false,
+                        ) { f ->
+                            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                val c = if (f) G.text else G.dim
+                                Canvas(Modifier.size(18.dp)) { drawRailIcon(iconFor(s), c) }
+                                Spacer(Modifier.width(12.dp))
+                                Text(s.title, style = G.label.copy(color = c), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(typeLabel(s), style = G.small.copy(color = G.faint))
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        FocusBox(
+                            onClick = { app.setPinned(s.key, !pinned) },
+                            modifier = Modifier.size(34.dp),
+                            shape = CircleShape,
+                            focusScale = 1.08f,
+                            idleColor = Color(0x14FFFFFF),
+                            focusColor = Color(0xF2F4F4F6),
+                            idleRim = Color.Transparent,
+                            glow = false,
+                        ) { f ->
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                val c = when {
+                                    f -> Color(0xFF0B0B0F)
+                                    pinned -> G.red
+                                    else -> Color(0x8CF4F4F6)
+                                }
+                                Canvas(Modifier.size(16.dp)) { drawPin(c, pinned) }
+                            }
+                        }
+                    }
+                }
+            }
+            Text("OK opens a library  ·  → then OK pins or unpins it", style = G.small.copy(color = G.faint), modifier = Modifier.padding(top = 12.dp))
+        }
+    }
+}
+
+private fun DrawScope.drawPin(c: Color, filled: Boolean) {
+    val w = size.width
+    val head = Path().apply {
+        moveTo(w * 0.22f, w * 0.06f); lineTo(w * 0.78f, w * 0.06f); lineTo(w * 0.68f, w * 0.40f)
+        lineTo(w * 0.86f, w * 0.58f); lineTo(w * 0.14f, w * 0.58f); lineTo(w * 0.32f, w * 0.40f); close()
+    }
+    if (filled) drawPath(head, c) else drawPath(head, c, style = Stroke(w * 0.09f, join = StrokeJoin.Round))
+    drawLine(c, Offset(w * 0.5f, w * 0.58f), Offset(w * 0.5f, w * 0.96f), w * 0.1f, StrokeCap.Round)
 }
 
 @Composable
@@ -333,6 +452,7 @@ private fun RailItem(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     onFocus: (() -> Unit)? = null,
+    trailing: String? = null,
 ) {
     val mod = Modifier.padding(start = if (open) 10.dp else 12.dp, end = if (open) 14.dp else 12.dp, top = 3.dp, bottom = 3.dp) // 44dp a row
         .height(38.dp)
@@ -367,6 +487,7 @@ private fun RailItem(
                 Spacer(Modifier.width(14.dp))
                 Text(label, style = G.label.copy(color = c, fontSize = 15.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (moving) Text("↕", style = G.label.copy(color = G.red))
+                trailing?.let { Text(it, style = G.small.copy(color = if (f) Color(0x990B0B0F) else G.faint)) }
             }
         }
     }
@@ -407,6 +528,11 @@ private fun DrawScope.drawRailIcon(icon: RailIcon, c: Color) {
                 moveTo(w * 0.06f, w * 0.22f); lineTo(w * 0.40f, w * 0.22f); lineTo(w * 0.50f, w * 0.32f); lineTo(w * 0.94f, w * 0.32f)
                 lineTo(w * 0.94f, w * 0.84f); lineTo(w * 0.06f, w * 0.84f); close()
             }, c, style = st)
+        }
+        RailIcon.ALL -> {
+            for (x in listOf(0.08f, 0.56f)) for (y in listOf(0.08f, 0.56f)) {
+                drawRoundRect(c, o(x, y), Size(w * 0.36f, w * 0.36f), CornerRadius(w * 0.08f), style = st)
+            }
         }
         RailIcon.SEARCH -> {
             drawCircle(c, w * 0.32f, o(0.42f, 0.42f), style = st)

@@ -60,6 +60,16 @@ class Prefs(ctx: Context) {
         get() = (p.getString("sectionOrder", "") ?: "").split(',').filter { it.isNotBlank() }
         set(v) = p.edit().putString("sectionOrder", v.joinToString(",")).apply()
 
+    /** Libraries unpinned from the side bar (still in All libraries). */
+    var hiddenSections: Set<String>
+        get() = (p.getString("hiddenSections", "") ?: "").split(',').filter { it.isNotBlank() }.toSet()
+        set(v) = p.edit().putString("hiddenSections", v.joinToString(",")).apply()
+
+    /** "amoled" (default) or "classic". */
+    var skin: String
+        get() = p.getString("skin", "amoled") ?: "amoled"
+        set(v) = p.edit().putString("skin", v).apply()
+
     /** Home row ids in display order ("cw", "recent:<key>"). */
     var homeOrder: List<String>
         get() = (p.getString("homeOrder", "") ?: "").split(',').filter { it.isNotBlank() }

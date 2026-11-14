@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -63,17 +64,29 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
+/** The current skin. AMOLED (default): true black. Classic: frosted glass over artwork. */
+object Skin {
+    var amoled by mutableStateOf(true)
+    val bg: Color get() = if (amoled) Color.Black else Color(0xFF09090C)
+    /** Menu cards (Playback, Subtitles, All libraries...). */
+    val card: Color get() = if (amoled) Color(0xFA000000) else Color(0xEC101015)
+    /** The open side bar. */
+    val drawer: Color get() = if (amoled) Color.Black else Color(0xFF0E0E13)
+    /** Idle fill of round glass buttons; AMOLED keeps just the outline. */
+    val button: Color get() = if (amoled) Color.Transparent else Color(0x1FFFFFFF)
+}
+
 object G {
-    val bg = Color(0xFF09090C)
+    val bg: Color get() = Skin.bg
     val red = Color(0xFFE8333F)
     val redDeep = Color(0xFF8A0F18)
     val text = Color(0xFFF4F4F6)
     val dim = Color(0xB3F4F4F6)
     val faint = Color(0x73F4F4F6)
-    val glass = Color(0x1AFFFFFF)
+    val glass: Color get() = if (Skin.amoled) Color(0x0AFFFFFF) else Color(0x1AFFFFFF)
     val glassHi = Color(0x33FFFFFF)
     val rim = Color(0x24FFFFFF)
-    val panel = Color(0xE6101015)
+    val panel: Color get() = if (Skin.amoled) Color(0xF5000000) else Color(0xE6101015)
     val cardShape = RoundedCornerShape(10.dp)
     val pillShape = RoundedCornerShape(50)
 
@@ -107,17 +120,20 @@ fun FocusBox(
 ) {
     val src = remember { MutableInteractionSource() }
     val focused by src.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) focusScale else 1f, tween(160), label = "scale")
+    val am = Skin.amoled
+    // AMOLED: a little less growth, a tight dim halo and a thin red line instead of the wide glow.
+    val scale by animateFloatAsState(if (focused) (if (am) 1f + (focusScale - 1f) * 0.67f else focusScale) else 1f, tween(160), label = "scale")
     val glowA by animateFloatAsState(if (focused && glow) 1f else 0f, tween(200), label = "glow")
     var longFired by remember { mutableStateOf(false) }
     LaunchedEffect(focused) { if (focused) onFocus?.invoke() }
     Box(
         modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .glow(shape, glowA)
+            .glow(shape, if (am) glowA * 0.6f else glowA, radius = if (am) 8.dp else 16.dp)
+            .let { if (am) it.hairline(shape, glowA) else it }
             .clip(shape)
             .background(if (focused) focusColor else idleColor)
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color(0xE6FFFFFF) else idleRim, shape)
+            .border(if (focused) (if (am) 1.5.dp else 2.dp) else 1.dp, if (focused) Color(0xF0FFFFFF) else idleRim, shape)
             .onPreviewKeyEvent { ev ->
                 val k = ev.nativeKeyEvent
                 val isSelect = k.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
@@ -234,8 +250,37 @@ fun ProgressLine(progress: Float, modifier: Modifier = Modifier, color: Color = 
     }
 }
 
-val scrimLeft = Brush.horizontalGradient(0f to Color(0xF209090C), 0.45f to Color(0xB309090C), 1f to Color(0x0009090C))
-val scrimBottom = Brush.verticalGradient(0f to Color(0x0009090C), 0.55f to Color(0x9909090C), 1f to G.bg)
+val scrimLeft get() = Brush.horizontalGradient(0f to Color(0xF209090C), 0.45f to Color(0xB309090C), 1f to Color(0x0009090C))
+val scrimBottom get() = Brush.verticalGradient(0f to Color(0x0009090C), 0.55f to Color(0x9909090C), 1f to G.bg)
+
+/**
+ * Page background from the focused title's art. Classic: full-screen art under scrims.
+ * AMOLED: true black, with the art only in the top right, fading to black before it
+ * reaches the text and rows.
+ */
+@Composable
+fun Backdrop(art: String?) {
+    val app = LocalApp.current
+    if (!Skin.amoled) {
+        androidx.compose.animation.Crossfade(art, animationSpec = tween(400), label = "backdrop") { a ->
+            Box(Modifier.fillMaxSize()) {
+                if (a != null) NetImage(app.plex.image(a, 1280, 720), Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
+            }
+        }
+        Box(Modifier.fillMaxSize().background(scrimLeft))
+        Box(Modifier.fillMaxSize().background(scrimBottom))
+        return
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        androidx.compose.animation.Crossfade(art, animationSpec = tween(400), label = "backdrop", modifier = Modifier.align(Alignment.TopEnd)) { a ->
+            Box(Modifier.fillMaxWidth(0.62f).fillMaxHeight(0.62f)) {
+                if (a != null) NetImage(app.plex.image(a, 800, 450), Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black, 0.55f to Color.Transparent)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black)))
+            }
+        }
+    }
+}
 
 // ---------------- images ----------------
 
@@ -350,3 +395,14 @@ fun GlassPanel(modifier: Modifier = Modifier, content: @Composable androidx.comp
 val NoAutoScroll = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
+
+
+/** Thin red line just outside the shape (AMOLED focus). */
+fun Modifier.hairline(shape: Shape, strength: Float, gap: Dp = 3.dp): Modifier =
+    if (strength <= 0f) this else drawBehind {
+        val d = gap.toPx()
+        val outline = shape.createOutline(Size(size.width + 2 * d, size.height + 2 * d), layoutDirection, this)
+        translate(-d, -d) {
+            drawOutline(outline, G.red.copy(alpha = 0.8f * strength), style = Stroke(1.dp.toPx()))
+        }
+    }

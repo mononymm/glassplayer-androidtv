@@ -36,16 +36,29 @@ class AppModel(ctx: Context, version: String) {
     var sections by mutableStateOf<List<Section>>(emptyList())
     var sectionOrder by mutableStateOf(prefs.sectionOrder)
     var homeOrder by mutableStateOf(prefs.homeOrder)
+    var hiddenSections by mutableStateOf(prefs.hiddenSections)
+
+    /** Libraries shown in the side bar (and on Home), in the user's order. */
+    val pinnedSections: List<Section> get() = orderedSections.filter { it.key !in hiddenSections }
+
+    fun setPinned(key: String, pinned: Boolean) {
+        hiddenSections = if (pinned) hiddenSections - key else hiddenSections + key
+        prefs.hiddenSections = hiddenSections
+    }
 
     /** Libraries in the user's order; any not yet ordered keep the server's order after them. */
     val orderedSections: List<Section>
         get() = sections.sortedBy { s -> sectionOrder.indexOf(s.key).let { if (it < 0) Int.MAX_VALUE else it } }
 
+    /** Moves [key] past its pinned neighbour (hidden libraries keep their places). */
     fun moveSection(key: String, dir: Int) {
         val keys = orderedSections.map { it.key }.toMutableList()
+        val pinned = pinnedSections.map { it.key }
+        val p = pinned.indexOf(key)
+        val other = pinned.getOrNull(p + dir) ?: return
+        if (p < 0) return
         val i = keys.indexOf(key)
-        val j = i + dir
-        if (i < 0 || j !in keys.indices) return
+        val j = keys.indexOf(other)
         java.util.Collections.swap(keys, i, j)
         sectionOrder = keys
         prefs.sectionOrder = keys
@@ -66,6 +79,7 @@ class AppModel(ctx: Context, version: String) {
     var refresh by mutableStateOf(0)
 
     init {
+        com.mononymm.glasstv.ui.Skin.amoled = prefs.skin != "classic"
         stack += when {
             prefs.accountToken == null -> Screen.SignIn
             prefs.serverUri == null -> Screen.Servers

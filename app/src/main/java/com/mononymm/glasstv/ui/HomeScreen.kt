@@ -78,7 +78,9 @@ fun HomeScreen() {
     var moving by remember { mutableStateOf<String?>(null) }
     var armed by remember { mutableStateOf(false) }
     // The user's order first; rows not in it yet keep their natural place after them.
-    val shown = rows.sortedBy { r -> app.homeOrder.indexOf(r.id).let { if (it < 0) Int.MAX_VALUE else it } }
+    // Unpinned libraries' rows are hidden too.
+    val shown = rows.filter { r -> !r.id.startsWith("recent:") || r.id.removePrefix("recent:") !in app.hiddenSections }
+        .sortedBy { r -> app.homeOrder.indexOf(r.id).let { if (it < 0) Int.MAX_VALUE else it } }
 
     LaunchedEffect(app.refresh) {
         val loaded = runCatching {
@@ -186,20 +188,7 @@ fun BrowseFrame(
     val contentReq = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     Box(Modifier.fillMaxSize()) {
-        Crossfade(hero?.let { it.backdrop ?: it.thumb }, animationSpec = tween(400), label = "backdrop") { art ->
-            Box(Modifier.fillMaxSize()) {
-                if (art != null) {
-                    NetImage(
-                        app.plex.image(art, 1280, 720),
-                        Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.TopCenter,
-                    )
-                }
-            }
-        }
-        Box(Modifier.fillMaxSize().background(scrimLeft))
-        Box(Modifier.fillMaxSize().background(scrimBottom))
+        Backdrop(hero?.let { it.backdrop ?: it.thumb })
         Column(Modifier.fillMaxSize()) {
             Header(center = headerCenter)
             if (heroHeight > 0) HeroInfo(hero, Modifier.height(heroHeight.dp))

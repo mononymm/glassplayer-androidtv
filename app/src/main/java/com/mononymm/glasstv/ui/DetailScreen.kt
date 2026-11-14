@@ -66,14 +66,7 @@ fun DetailScreen(start: Item) {
     LaunchedEffect(Unit) { playFocus.focusSoon() }
 
     Box(Modifier.fillMaxSize()) {
-        NetImage(
-            app.plex.image(item.backdrop ?: item.thumb, 1920, 1080),
-            Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alignment = Alignment.TopCenter,
-        )
-        Box(Modifier.fillMaxSize().background(scrimLeft))
-        Box(Modifier.fillMaxSize().background(scrimBottom))
+        Backdrop(item.backdrop ?: item.thumb)
 
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 56.dp, bottom = 48.dp)) {
             item {

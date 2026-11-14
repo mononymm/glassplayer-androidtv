@@ -562,7 +562,10 @@ private fun LowerPanel(
     val faded = G.h2.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = G.faint)
     Column(
         Modifier.fillMaxWidth().height(PANEL_H)
-            .background(Brush.verticalGradient(0f to Color(0x00101015), 0.16f to Color(0xE6101015), 1f to Color(0xF2101015)))
+            .background(
+                if (Skin.amoled) Brush.verticalGradient(0f to Color.Transparent, 0.16f to Color(0xF0000000), 1f to Color.Black)
+                else Brush.verticalGradient(0f to Color(0x00101015), 0.16f to Color(0xE6101015), 1f to Color(0xF2101015)),
+            )
             .padding(top = 22.dp),
     ) {
         if (level == 2) {
@@ -753,7 +756,7 @@ private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifi
         focusEnabled = enabled,
         shape = CircleShape,
         focusScale = 1.1f,
-        idleColor = Color(0x1FFFFFFF),
+        idleColor = Skin.button,
         focusColor = Color(0x33FFFFFF),
         glow = true,
     ) { _ ->
@@ -784,7 +787,7 @@ private fun GlassIconButton(
         idleColor = when {
             plain -> Color.Transparent
             red -> Color(0x38E8333F)
-            else -> Color(0x1FFFFFFF)
+            else -> Skin.button
         },
         focusColor = if (red) Color(0x66E8333F) else Color(0x40FFFFFF),
         glow = !plain,
@@ -953,7 +956,7 @@ private fun SidePanel(
     val engine = session.engine
     Box(Modifier.fillMaxSize().background(Color(0x78000000)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.width(440.dp).clip(MenuShape).background(Color(0xEC101015)).border(1.dp, G.rim, MenuShape)
+            Modifier.width(440.dp).clip(MenuShape).background(Skin.card).border(1.dp, G.rim, MenuShape)
                 .padding(horizontal = 10.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

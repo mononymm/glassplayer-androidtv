@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -43,13 +45,32 @@ fun SettingsScreen() {
             contentPadding = PaddingValues(start = EDGE + 8.dp, end = EDGE + 8.dp, top = 16.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item { Header("Look") }
+            item {
+                // OK, or Left/Right, switches the skin; the whole app changes straight away.
+                fun set(amoled: Boolean) {
+                    Skin.amoled = amoled
+                    p.skin = if (amoled) "amoled" else "classic"
+                }
+                SettingRow(
+                    "Skin",
+                    "AMOLED: true black, made for HDR and OLED screens. Classic: frosted glass over the artwork.",
+                    if (Skin.amoled) "AMOLED" else "Classic",
+                    Modifier.focusRequester(first).onPreviewKeyEvent { ev ->
+                        when (ev.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> { if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) set(true); true }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) set(false); true }
+                            else -> false
+                        }
+                    },
+                ) { set(!Skin.amoled) }
+            }
             item { Header("Server") }
             item {
                 SettingRow(
                     "${p.serverName ?: "No server"}",
                     app.plex.hostLabel().let { if (it.isBlank()) "" else "Connected via $it" },
                     "Change",
-                    Modifier.focusRequester(first),
                 ) { app.go(Screen.Servers) }
             }
 
