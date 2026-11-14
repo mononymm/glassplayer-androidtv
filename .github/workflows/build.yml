@@ -1,0 +1,108 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      APP_VERSION: 0.1.${{ github.run_number }}
+      APP_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: CA bundle for mpv's https
+        run: curl -fsSL https://curl.se/ca/cacert.pem -o app/src/main/assets/cacert.pem
+
+      - name: Signing key
+        id: key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/glass.jks"
+            echo "file=$RUNNER_TEMP/glass.jks" >> "$GITHUB_OUTPUT"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No KEYSTORE_B64 secret - building a test APK only (no release)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build APK
+        env:
+          KEYSTORE_FILE: ${{ steps.key.outputs.file }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/Glass-TV.apk
+          (cd out && sha256sum Glass-TV.apk > Glass-TV.apk.sha256 && cat Glass-TV.apk.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Glass-TV-${{ env.APP_VERSION }}
+          path: out/
+
+      - name: Attest
+        if: steps.key.outputs.signed == 'true' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: out/Glass-TV.apk
+
+      - name: Release notes
+        if: steps.key.outputs.signed == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          SHA=$(cut -d' ' -f1 out/Glass-TV.apk.sha256)
+          {
+            echo "## Changes"
+            if [ -n "$PREV" ]; then git log "$PREV"..HEAD --no-merges --format='- %s'; else git log --no-merges --format='- %s'; fi
+            echo
+            echo "## Install"
+            echo "On the TV, open **Downloader** and enter:"
+            echo
+            echo '`https://github.com/${{ github.repository }}/releases/latest/download/Glass-TV.apk`'
+            echo
+            echo "Updates install over the old version (same signing key), keeping your sign-in."
+            echo
+            echo "## Verify"
+            echo "SHA-256: \`$SHA\`"
+            echo
+            echo "Built by GitHub Actions from this commit ([build log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})). Check it yourself:"
+            echo
+            echo '```'
+            echo "gh attestation verify Glass-TV.apk --repo ${{ github.repository }}"
+            echo '```'
+          } > notes.md
+          cat notes.md
+
+      - name: Publish release
+        if: steps.key.outputs.signed == 'true' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: Glass TV ${{ env.APP_VERSION }}
+          body_path: notes.md
+          files: |
+            out/Glass-TV.apk
+            out/Glass-TV.apk.sha256
+          make_latest: true
