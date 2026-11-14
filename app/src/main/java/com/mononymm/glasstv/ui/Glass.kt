@@ -102,6 +102,7 @@ fun FocusBox(
     glow: Boolean = true,
     onFocus: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
+    idleRim: Color = G.rim,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     val src = remember { MutableInteractionSource() }
@@ -116,7 +117,7 @@ fun FocusBox(
             .glow(shape, glowA)
             .clip(shape)
             .background(if (focused) focusColor else idleColor)
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color(0xE6FFFFFF) else G.rim, shape)
+            .border(if (focused) 2.dp else 1.dp, if (focused) Color(0xE6FFFFFF) else idleRim, shape)
             .onPreviewKeyEvent { ev ->
                 val k = ev.nativeKeyEvent
                 val isSelect = k.keyCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||

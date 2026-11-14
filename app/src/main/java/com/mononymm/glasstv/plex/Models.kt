@@ -144,9 +144,19 @@ data class MediaInfo(
 ) {
     val hasStyledSubs get() = subs.any { it.styled }
 
+    /** "4K", "1080p"... judged by width too, so a 3840×1600 scope film is 4K, not 1600p. */
+    val resolution: String?
+        get() = when {
+            width <= 0 && height <= 0 -> null
+            width >= 3200 || height >= 2000 -> "4K"
+            width >= 1800 || height >= 1000 -> "1080p"
+            width >= 1200 || height >= 700 -> "720p"
+            else -> "${height}p"
+        }
+
     val summary: String
         get() = buildList {
-            if (height > 0) add(if (height >= 2000) "4K" else "${height}p")
+            resolution?.let { add(it) }
             videoCodec?.let { add(it.uppercase()) }
             if (dolbyVision) add("Dolby Vision" + (dvProfile?.let { " P$it" } ?: "")) else if (hdr) add("HDR")
             audioCodec?.let { add(it.uppercase()) }

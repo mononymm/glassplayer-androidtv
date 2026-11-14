@@ -128,6 +128,9 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 mpv?.setPropertyString("android-surface-size", "${width}x$height")
                 state.renderSize = "$width×$height"
+                surfW = width
+                surfH = height
+                quiet()
                 if (prefs.matchFrameRate) FrameRate.apply(holder.surface, state.videoFps)
             }
 
@@ -149,6 +152,10 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
 
     private fun start(req: LoadRequest) {
         val m = mpv ?: return
+        // Switch the TV's refresh rate from Plex's frame rate before the first frame, rather than
+        // after mpv reports it: the mode change mid-playback showed a rough first second.
+        if (prefs.matchFrameRate) req.info.frameRate?.takeIf { it > 1f }?.let { FrameRate.apply(surfaceView?.holder?.surface, it) }
+        quiet()
         loaded = req
         state.ended = false
         state.buffering = true
@@ -163,15 +170,29 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
     // Frame drops in the last few seconds; if the sharp scaler can't keep up, drop back to bilinear.
     private val drops = ArrayDeque<Pair<Long, Long>>()
     private var lastDropCount = -1L
-    private var restartAt = 0L
+    private var quietUntil = 0L
     private var fellBack = false
+    private var surfW = 0
+    private var surfH = 0
+
+    /** Ignore drops for a few seconds: start-up, seeks and refresh-rate switches drop frames anyway. */
+    private fun quiet() { quietUntil = System.currentTimeMillis() + 5000; drops.clear() }
+
+    /** True when mpv is actually enlarging the picture (otherwise the scaler isn't doing any work). */
+    private fun upscaling(): Boolean {
+        val m = mpv ?: return false
+        val w = m.getPropertyInt("dwidth") ?: return false
+        val h = m.getPropertyInt("dheight") ?: return false
+        if (w <= 0 || h <= 0 || surfW <= 0 || surfH <= 0) return false
+        return minOf(surfW.toFloat() / w, surfH.toFloat() / h) > 1.01f
+    }
 
     private fun onDropCount(count: Long) {
         val now = System.currentTimeMillis()
         val prev = lastDropCount
         lastDropCount = count
         if (prev < 0 || count <= prev || fellBack || !prefs.sharpScaling) return
-        if (now - restartAt < 3000) return // seeks and start-up drop a few frames anyway
+        if (now < quietUntil || !upscaling()) return
         drops.addLast(now to (count - prev))
         while (drops.isNotEmpty() && now - drops.first().first > 10_000) drops.removeFirst()
         if (drops.sumOf { it.second } >= 15) {
@@ -266,6 +287,7 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
                 "duration" -> state.durationMs = (value * 1000).toLong()
                 "speed" -> state.speed = value.toFloat()
                 "container-fps" -> {
+                    if (value.toFloat() != state.videoFps) quiet()
                     state.videoFps = value.toFloat()
                     if (prefs.matchFrameRate) FrameRate.apply(surfaceView?.holder?.surface, value.toFloat())
                 }
@@ -293,7 +315,7 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
                 MpvEvent.MPV_EVENT_FILE_LOADED -> onFileLoaded()
                 MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> {
                     state.buffering = false
-                    restartAt = System.currentTimeMillis()
+                    quiet()
                 }
                 MpvEvent.MPV_EVENT_END_FILE -> {}
             }
