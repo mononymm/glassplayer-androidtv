@@ -5,6 +5,21 @@ import android.view.KeyEvent as AK
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
+import com.mononymm.glasstv.plex.Chapter
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -95,10 +110,17 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     var boostFrom by remember { mutableStateOf(1f) }
     var countdown by remember { mutableIntStateOf(-1) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // 0 = buttons, 1 = playlist row, 2 = chapters row.
+    var level by remember { mutableIntStateOf(0) }
+    var rowFocused by remember { mutableStateOf(false) }
+    var seekFocused by remember { mutableStateOf(false) }
+    val hasPlaylist = session.playlist.size > 1
+    val hasChapters = (session.info?.chapters?.size ?: 0) > 1
 
     val root = remember { FocusRequester() }
     val playBtn = remember { FocusRequester() }
     val panelFirst = remember { FocusRequester() }
+    val tileFirst = remember { FocusRequester() }
 
     fun touch() { lastInput = System.currentTimeMillis() }
     fun showToast(t: String) { toast = t; toastAt = System.currentTimeMillis() }
@@ -135,15 +157,19 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         controls = false
         panel = null
         scrubMs = null
+        level = 0
+    }
+    fun levelUp() {
+        level = if (level == 2 && hasPlaylist) 1 else 0
     }
     fun exit() {
         if (!app.back()) app.replaceAll(Screen.Home)
     }
 
     // Auto-hide controls while playing.
-    LaunchedEffect(controls, lastInput, panel, st?.paused) {
+    LaunchedEffect(controls, lastInput, panel, st?.paused, level) {
         if (controls && panel == null && st?.paused == false) {
-            delay(5000)
+            delay(if (level == 0) 5000 else 15000)
             hideControls()
         }
     }
@@ -152,7 +178,13 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     LaunchedEffect(controls) {
         if (controls) playBtn.focusSoon() else root.focusSoon()
     }
-    LaunchedEffect(panel) { if (panel != null) panelFirst.focusSoon() else if (controls) playBtn.focusSoon() }
+    LaunchedEffect(panel) {
+        if (panel != null) panelFirst.focusSoon()
+        else if (controls) (if (level > 0) tileFirst else playBtn).focusSoon()
+    }
+    LaunchedEffect(level) {
+        if (controls && panel == null) (if (level > 0) tileFirst else playBtn).focusSoon()
+    }
     LaunchedEffect(controls) { while (controls) { now = System.currentTimeMillis(); delay(10_000) } }
     // Commit a scrub shortly after the last press.
     LaunchedEffect(scrubAt) {
@@ -221,7 +253,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
             AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> {
                 if (countdown > 0) { if (up) exit(); return true }
                 if (panel != null) { if (up) panel = null; return true }
-                if (controls) { if (up) hideControls(); return true }
+                if (controls) { if (up) { if (level > 0) levelUp() else hideControls() }; return true }
                 if (up) exit()
                 return true
             }
@@ -234,6 +266,32 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
             AK.KEYCODE_MEDIA_PREVIOUS -> { if (up) chapter(-1); return true }
             AK.KEYCODE_MEDIA_STOP -> { if (up) exit(); return true }
             AK.KEYCODE_CAPTIONS -> { if (up) { panel = Panel.SUBS; controls = true }; return true }
+        }
+        if (controls && panel == null && countdown <= 0) {
+            val down = ev.type == KeyEventType.KeyDown
+            when (k.keyCode) {
+                AK.KEYCODE_DPAD_DOWN -> {
+                    if (level == 0 && !rowFocused) return false
+                    if (down && k.repeatCount == 0) {
+                        level = when (level) {
+                            0 -> if (hasPlaylist) 1 else if (hasChapters) 2 else 0
+                            1 -> if (hasChapters) 2 else 1
+                            else -> 2
+                        }
+                    }
+                    return true
+                }
+                AK.KEYCODE_DPAD_UP -> {
+                    if (level == 0) {
+                        // Up from the seek bar hides the controls.
+                        if (!seekFocused) return false
+                        if (down && k.repeatCount == 0) hideControls()
+                        return true
+                    }
+                    if (down && k.repeatCount == 0) levelUp()
+                    return true
+                }
+            }
         }
         if (countdown > 0) {
             val sel = k.keyCode == AK.KEYCODE_DPAD_CENTER || k.keyCode == AK.KEYCODE_ENTER
@@ -310,6 +368,18 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
                 onToggle = { togglePause() },
                 onChapter = { chapter(it) },
                 onPanel = { panel = it; touch() },
+                level = level,
+                hasPlaylist = hasPlaylist,
+                hasChapters = hasChapters,
+                tileFirst = tileFirst,
+                onRowFocus = { rowFocused = it },
+                onSeekFocus = { seekFocused = it },
+                onNextEpisode = { session.next?.let { session.play(it); hideControls() } },
+                onPickEpisode = { ep ->
+                    if (ep.ratingKey == session.item.ratingKey) level = 0
+                    else { session.play(ep); hideControls() }
+                },
+                onPickChapter = { c -> engine?.seekTo(c.startMs); level = 0 },
             )
         }
 
@@ -323,6 +393,10 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     }
 }
 
+private val PANEL_H = 300.dp
+private val LIFT = 272.dp
+private val SIDE_BTN = 44.dp
+
 @Composable
 private fun Controls(
     session: PlaybackSession,
@@ -334,31 +408,41 @@ private fun Controls(
     onToggle: () -> Unit,
     onChapter: (Int) -> Unit,
     onPanel: (Panel) -> Unit,
+    level: Int,
+    hasPlaylist: Boolean,
+    hasChapters: Boolean,
+    tileFirst: FocusRequester,
+    onRowFocus: (Boolean) -> Unit,
+    onSeekFocus: (Boolean) -> Unit,
+    onNextEpisode: () -> Unit,
+    onPickEpisode: (Item) -> Unit,
+    onPickChapter: (Chapter) -> Unit,
 ) {
     val ctx = LocalContext.current
     val item = session.item
-    val hasChapters = (session.info?.chapters?.size ?: 0) > 1
+    val lowered = level > 0
+    val live = !lowered
+    val lift by animateDpAsState(if (lowered) LIFT else 0.dp, tween(260), label = "lift")
+    val fade by animateFloatAsState(if (lowered) 0.35f else 1f, tween(260), label = "fade")
+    // Keep the last lower level so the panel doesn't go blank while it slides away.
+    var panelLevel by remember { mutableIntStateOf(1) }
+    if (level > 0) panelLevel = level
+
     Box(Modifier.fillMaxSize()) {
         // Soft scrims so white text reads over bright video.
         Box(Modifier.fillMaxWidth().height(140.dp).background(Brush.verticalGradient(listOf(Color(0x59000000), Color.Transparent))))
         Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(260.dp)
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(280.dp)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))),
         )
 
-        // Centre: chapter back, play/pause, chapter forward.
-        Row(
-            Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(40.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .offset(y = -lift)
+                .graphicsLayer { alpha = fade }
+                .padding(start = 48.dp, end = 48.dp, bottom = 28.dp),
         ) {
-            GlassIconButton({ onChapter(-1) }, size = 56.dp, dim = !hasChapters) { c -> ChapterIcon(c, back = true) }
-            BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn))
-            GlassIconButton({ onChapter(1) }, size = 56.dp, dim = !hasChapters) { c -> ChapterIcon(c, back = false) }
-        }
-
-        // Bottom: title on the video, then one thin glass bar.
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 48.dp, end = 48.dp, bottom = 28.dp)) {
+            // Title on the left, clock and file line on the right.
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -383,32 +467,236 @@ private fun Controls(
                 }
             }
             Spacer(Modifier.height(10.dp))
+            // Seek pill: elapsed on the left, total on the right, same inset both sides.
             Row(
                 Modifier.fillMaxWidth().height(52.dp).clip(G.pillShape).background(Color(0x24FFFFFF))
-                    .border(1.dp, Color(0x2EFFFFFF), G.pillShape).padding(start = 22.dp, end = 8.dp),
+                    .border(1.dp, Color(0x2EFFFFFF), G.pillShape).padding(horizontal = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val shown = scrubMs ?: st.positionMs
-                Text(fmt(shown), style = G.label.copy(fontSize = 13.sp))
-                Text(" / ${fmt(st.durationMs)}", style = G.label.copy(fontSize = 13.sp, color = Color(0x99FFFFFF)))
-                Spacer(Modifier.width(16.dp))
-                SeekBar(shown, st.durationMs, session.info?.chapters?.map { it.startMs } ?: emptyList(), onScrub, Modifier.weight(1f))
-                Spacer(Modifier.width(14.dp))
-                Box(Modifier.size(1.dp, 22.dp).background(Color(0x40FFFFFF)))
-                Spacer(Modifier.width(6.dp))
-                GlassIconButton({ onPanel(Panel.AUDIO) }, size = 40.dp, plain = true) { c -> NoteIcon(c) }
-                val subsOn = st.subs.any { it.selected }
-                GlassIconButton({ onPanel(Panel.SUBS) }, size = 40.dp, plain = true, tint = if (subsOn) G.red else null) { c -> CaptionsIcon(c, filled = subsOn) }
-                GlassIconButton({ onPanel(Panel.INFO) }, size = 40.dp, plain = true) { c -> InfoIcon(c) }
+                Text(fmt(shown), style = G.label.copy(fontSize = 13.sp), textAlign = TextAlign.Start, modifier = Modifier.width(56.dp))
+                SeekBar(
+                    shown, st.durationMs, session.info?.chapters?.map { it.startMs } ?: emptyList(), onScrub,
+                    Modifier.weight(1f).onFocusChanged { onSeekFocus(it.isFocused) }, enabled = live,
+                )
+                Text(fmt(st.durationMs), style = G.label.copy(fontSize = 13.sp, color = Color(0x99FFFFFF)), textAlign = TextAlign.End, modifier = Modifier.width(56.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            // Buttons: two on each side at matching insets, play group dead centre.
+            Box(Modifier.fillMaxWidth().height(64.dp).onFocusChanged { onRowFocus(it.hasFocus) }) {
+                Row(Modifier.align(Alignment.CenterStart), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GlassIconButton({ onPanel(Panel.AUDIO) }, size = SIDE_BTN, enabled = live) { c -> NoteIcon(c) }
+                    val subsOn = st.subs.any { it.selected }
+                    GlassIconButton({ onPanel(Panel.SUBS) }, size = SIDE_BTN, tint = if (subsOn) G.red else null, enabled = live) { c -> CaptionsIcon(c, filled = subsOn) }
+                }
+                Row(
+                    Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GlassIconButton({ onChapter(-1) }, size = 48.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = true) }
+                    BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn), enabled = live)
+                    GlassIconButton({ onChapter(1) }, size = 48.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = false) }
+                }
+                Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GlassIconButton({ onPanel(Panel.INFO) }, size = SIDE_BTN, enabled = live) { c -> TuneIcon(c) }
+                    val hasNext = session.next != null
+                    GlassIconButton(onNextEpisode, size = SIDE_BTN, red = hasNext, dim = !hasNext, enabled = live && hasNext) { c -> NextEpisodeIcon(c) }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            lowered,
+            enter = slideInVertically(tween(260)) { it } + fadeIn(tween(260)),
+            exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(220)),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            LowerPanel(panelLevel, session, st, hasPlaylist, hasChapters, tileFirst, onPickEpisode, onPickChapter)
+        }
+    }
+}
+
+/** The row under the controls: the season's episodes (level 1) or the chapters (level 2). */
+@Composable
+private fun LowerPanel(
+    level: Int,
+    session: PlaybackSession,
+    st: PlayerState,
+    hasPlaylist: Boolean,
+    hasChapters: Boolean,
+    first: FocusRequester,
+    onPickEpisode: (Item) -> Unit,
+    onPickChapter: (Chapter) -> Unit,
+) {
+    val app = LocalApp.current
+    val inset = 56.dp
+    // The neighbouring level's name: same place on the left, a little smaller and faded.
+    val faded = G.h2.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = G.faint)
+    Column(
+        Modifier.fillMaxWidth().height(PANEL_H)
+            .background(Brush.verticalGradient(0f to Color(0x00101015), 0.16f to Color(0xE6101015), 1f to Color(0xF2101015)))
+            .padding(top = 22.dp),
+    ) {
+        if (level == 2) {
+            Text(if (hasPlaylist) "Playlist" else " ", style = faded, modifier = Modifier.padding(start = inset))
+            Spacer(Modifier.height(2.dp))
+            Text("Chapters", style = G.h2, modifier = Modifier.padding(start = inset))
+            val chapters = session.info?.chapters ?: emptyList()
+            val pos = st.positionMs
+            val cur = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
+            TileRow(chapters.size, cur, first) { i, mod, onFocus ->
+                val c = chapters[i]
+                val end = chapters.getOrNull(i + 1)?.startMs ?: st.durationMs
+                val len = (end - c.startMs).coerceAtLeast(0)
+                val isCur = i == cur
+                PlayerTile(
+                    image = c.thumb?.let { app.plex.image(it, 496, 280) },
+                    plainText = fmt(c.startMs),
+                    tag = if (c.thumb != null) fmt(c.startMs) else null,
+                    title = c.title?.takeIf { it.isNotBlank() } ?: "Chapter ${i + 1}",
+                    sub = if (isCur) "${shortDur(pos - c.startMs)} in" else shortDur(len),
+                    current = isCur,
+                    currentLabel = "Now",
+                    watched = false,
+                    progress = if (isCur && len > 0) ((pos - c.startMs).toFloat() / len) else null,
+                    onClick = { onPickChapter(c) },
+                    onFocus = onFocus,
+                    modifier = mod,
+                )
+            }
+        } else {
+            Row(Modifier.padding(start = inset), verticalAlignment = Alignment.Bottom) {
+                Text("Playlist", style = G.h2)
+                session.item.seasonIndex?.let {
+                    Text("   Season $it", style = G.small.copy(color = G.faint), modifier = Modifier.padding(bottom = 2.dp))
+                }
+            }
+            val eps = session.playlist
+            val curKey = session.item.ratingKey
+            val cur = eps.indexOfFirst { it.ratingKey == curKey }.coerceAtLeast(0)
+            TileRow(eps.size, cur, first) { i, mod, onFocus ->
+                val ep = eps[i]
+                val isCur = ep.ratingKey == curKey
+                val left = (st.durationMs - st.positionMs).coerceAtLeast(0)
+                PlayerTile(
+                    image = app.plex.image(ep.thumb, 496, 280),
+                    plainText = null,
+                    tag = ep.episodeTag ?: ep.index?.let { "E$it" },
+                    title = ep.title,
+                    sub = when {
+                        isCur -> if (st.durationMs > 0) minutes(left) + " left" else minutes(ep.duration)
+                        else -> (if (!ep.watched) remaining(ep) else null) ?: minutes(ep.duration)
+                    },
+                    current = isCur,
+                    currentLabel = "Now playing",
+                    watched = ep.watched && !isCur,
+                    progress = when {
+                        isCur -> if (st.durationMs > 0) st.positionMs.toFloat() / st.durationMs else null
+                        ep.progress > 0f && !ep.watched -> ep.progress
+                        else -> null
+                    },
+                    onClick = { onPickEpisode(ep) },
+                    onFocus = onFocus,
+                    modifier = mod,
+                )
+            }
+            if (hasChapters) Text("Chapters", style = faded, modifier = Modifier.padding(start = inset))
+        }
+    }
+}
+
+/** Horizontal row that keeps the focused tile in the middle of the screen. */
+@Composable
+private fun TileRow(
+    count: Int,
+    current: Int,
+    first: FocusRequester,
+    tile: @Composable (index: Int, modifier: Modifier, onFocus: () -> Unit) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val side = ((maxWidth - WIDE_W.dp) / 2).coerceAtLeast(0.dp)
+        val state = rememberLazyListState(initialFirstVisibleItemIndex = current.coerceIn(0, maxOf(0, count - 1)))
+        val scope = rememberCoroutineScope()
+        LazyRow(
+            state = state,
+            contentPadding = PaddingValues(start = side, end = side, top = 14.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(count) { i ->
+                tile(i, if (i == current) Modifier.focusRequester(first) else Modifier) {
+                    scope.launch { state.animateScrollToItem(i) }
+                }
             }
         }
     }
 }
 
+/** Episode or chapter tile, styled like the library's wide cards. */
+@Composable
+private fun PlayerTile(
+    image: String?,
+    plainText: String?,
+    tag: String?,
+    title: String,
+    sub: String,
+    current: Boolean,
+    currentLabel: String,
+    watched: Boolean,
+    progress: Float?,
+    onClick: () -> Unit,
+    onFocus: () -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier.width(WIDE_W.dp)) {
+        FocusBox(
+            onClick = onClick,
+            modifier = Modifier.size(WIDE_W.dp, WIDE_H.dp),
+            onFocus = onFocus,
+            idleColor = if (image == null) Color(0x1FFFFFFF) else G.glass,
+        ) { f ->
+            if (image != null) {
+                NetImage(image, Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xCC000000))))
+            } else if (plainText != null) {
+                Text(plainText, style = G.title.copy(fontSize = 26.sp, fontWeight = FontWeight.SemiBold), modifier = Modifier.align(Alignment.Center))
+            }
+            if (current && !f) Box(Modifier.matchParentSize().border(2.dp, G.red, G.cardShape))
+            if (f && !current) {
+                Box(Modifier.align(Alignment.Center).size(46.dp).clip(CircleShape).background(Color(0x66000000)), contentAlignment = Alignment.Center) {
+                    PlayGlyph(G.red, 20.dp, Modifier.offset(x = 1.5.dp))
+                }
+            }
+            if (watched) WatchedBadge(Modifier.align(Alignment.TopEnd).padding(6.dp))
+            if (current) {
+                Box(Modifier.align(Alignment.TopStart).padding(6.dp).clip(G.pillShape).background(G.red).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Text(currentLabel, style = G.small.copy(color = Color.White, fontWeight = FontWeight.Medium))
+                }
+            }
+            Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 8.dp).fillMaxWidth()) {
+                tag?.let { Text(it, style = G.small.copy(color = G.dim)) }
+                if (progress != null) {
+                    Spacer(Modifier.height(5.dp))
+                    ProgressLine(progress, Modifier.fillMaxWidth())
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(title, style = G.small.copy(color = G.text), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(sub, style = G.small.copy(color = G.faint), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** "45 sec", "7 min", "1 h 4 min". */
+private fun shortDur(ms: Long): String {
+    val s = (ms.coerceAtLeast(0) / 1000).toInt()
+    return if (s < 60) "$s sec" else minutes(ms)
+}
+
 private val textShadow = androidx.compose.ui.graphics.Shadow(Color(0xD9000000), androidx.compose.ui.geometry.Offset(0f, 1.5f), 6f)
 
 @Composable
-private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
+private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, Int) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val src = remember { MutableInteractionSource() }
     val focused by src.collectIsFocusedAsState()
     Box(
@@ -422,19 +710,20 @@ private fun SeekBar(pos: Long, dur: Long, chapters: List<Long>, onScrub: (Int, I
                     else -> false
                 }
             }
-            .focusable(interactionSource = src),
+            .focusable(enabled = enabled, interactionSource = src),
         contentAlignment = Alignment.CenterStart,
     ) {
-        SeekLine(pos, dur, chapters, focused)
+        SeekLine(pos, dur, chapters, focused, watchedMark = true)
     }
 }
 
 /** The big play/pause button: red outline glyph in a glass circle with a red rim. */
 @Composable
-private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     FocusBox(
         onClick = onClick,
-        modifier = modifier.size(76.dp),
+        modifier = modifier.size(64.dp),
+        focusEnabled = enabled,
         shape = CircleShape,
         focusScale = 1.1f,
         idleColor = Color(0x1FFFFFFF),
@@ -442,7 +731,8 @@ private fun BigPlayButton(paused: Boolean, onClick: () -> Unit, modifier: Modifi
         glow = true,
     ) { _ ->
         Box(Modifier.fillMaxSize().border(2.dp, G.red, CircleShape), contentAlignment = Alignment.Center) {
-            if (paused) PlayGlyph(G.red, 30.dp, Modifier.offset(x = 2.dp)) else PauseIcon(G.red)
+            // The triangle's visual centre sits left of its box, so nudge it right.
+            if (paused) PlayGlyph(G.red, 26.dp, Modifier.offset(x = 2.dp)) else PauseIcon(G.red)
         }
     }
 }
@@ -454,6 +744,8 @@ private fun GlassIconButton(
     dim: Boolean = false,
     plain: Boolean = false,
     tint: Color? = null,
+    red: Boolean = false,
+    enabled: Boolean = true,
     icon: @Composable (Color) -> Unit,
 ) {
     FocusBox(
@@ -461,12 +753,24 @@ private fun GlassIconButton(
         modifier = Modifier.size(size),
         shape = CircleShape,
         focusScale = 1.12f,
-        idleColor = if (plain) Color.Transparent else Color(0x1FFFFFFF),
-        focusColor = Color(0x40FFFFFF),
+        idleColor = when {
+            plain -> Color.Transparent
+            red -> Color(0x38E8333F)
+            else -> Color(0x1FFFFFFF)
+        },
+        focusColor = if (red) Color(0x66E8333F) else Color(0x40FFFFFF),
         glow = !plain,
+        focusEnabled = enabled,
     ) { f ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            icon(tint ?: if (dim && !f) Color(0x59FFFFFF) else Color.White)
+            icon(
+                when {
+                    tint != null -> tint
+                    red -> G.red
+                    dim && !f -> Color(0x59FFFFFF)
+                    else -> Color.White
+                },
+            )
         }
     }
 }
@@ -474,8 +778,8 @@ private fun GlassIconButton(
 @Composable
 private fun PauseIcon(c: Color) {
     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        Box(Modifier.size(5.dp, 24.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
-        Box(Modifier.size(5.dp, 24.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+        Box(Modifier.size(5.dp, 21.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
+        Box(Modifier.size(5.dp, 21.dp).clip(G.pillShape).border(2.dp, c, G.pillShape))
     }
 }
 
@@ -529,21 +833,54 @@ private fun CaptionsIcon(c: Color, filled: Boolean) {
     }
 }
 
+/** Three sliders: playback settings (file info, speed, player). */
 @Composable
-private fun InfoIcon(c: Color) {
+private fun TuneIcon(c: Color) {
     androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
         val w = size.width
+        val h = size.height
         val sw = w * 0.09f
-        drawCircle(c, radius = w * 0.42f, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
-        drawCircle(c, radius = w * 0.06f, center = androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.30f))
-        drawLine(c, androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.46f), androidx.compose.ui.geometry.Offset(w * 0.5f, w * 0.72f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+        val rows = listOf(0.24f to 0.66f, 0.50f to 0.34f, 0.76f to 0.58f)
+        rows.forEach { (y, knob) ->
+            drawLine(c, androidx.compose.ui.geometry.Offset(w * 0.08f, h * y), androidx.compose.ui.geometry.Offset(w * 0.92f, h * y), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawCircle(c, radius = w * 0.12f, center = androidx.compose.ui.geometry.Offset(w * knob, h * y))
+        }
+    }
+}
+
+/** Two triangles and a bar: next episode (the chapter buttons use one triangle). */
+@Composable
+private fun NextEpisodeIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val w = size.width
+        val h = size.height
+        fun tri(x0: Float, x1: Float) = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * x0, h * 0.20f); lineTo(w * x1, h * 0.5f); lineTo(w * x0, h * 0.80f); close()
+        }
+        drawPath(tri(0.06f, 0.44f), c)
+        drawPath(tri(0.40f, 0.78f), c)
+        drawRoundRect(c, topLeft = androidx.compose.ui.geometry.Offset(w * 0.80f, h * 0.20f),
+            size = androidx.compose.ui.geometry.Size(w * 0.12f, h * 0.60f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.06f))
     }
 }
 
 @Composable
-private fun SeekLine(pos: Long, dur: Long, chapters: List<Long>?, focused: Boolean) {
+private fun SeekLine(pos: Long, dur: Long, chapters: List<Long>?, focused: Boolean, watchedMark: Boolean = false) {
     val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
-    Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
+    Box(Modifier.fillMaxWidth().height(if (watchedMark) 26.dp else 14.dp), contentAlignment = Alignment.CenterStart) {
+        if (watchedMark && dur > 0) {
+            // Small arrow over the bar where Plex counts the file as watched (90%, as in iOS and glass.lua).
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val x = size.width * 0.9f
+                val mid = size.height / 2
+                val half = 5.dp.toPx()
+                val p = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(x - half, mid - 12.dp.toPx()); lineTo(x + half, mid - 12.dp.toPx()); lineTo(x, mid - 5.dp.toPx()); close()
+                }
+                drawPath(p, Color(0xEBFFFFFF))
+            }
+        }
         Box(Modifier.fillMaxWidth().height(if (focused) 5.dp else 3.dp).clip(G.pillShape).background(Color(0x4DFFFFFF))) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(G.red))
         }
@@ -569,26 +906,44 @@ private fun SeekLine(pos: Long, dur: Long, chapters: List<Long>?, focused: Boole
 @Composable
 private fun SidePanel(p: Panel, session: PlaybackSession, st: PlayerState?, first: FocusRequester, close: () -> Unit) {
     val engine = session.engine
-    data class PRow(val label: String, val detail: String?, val checked: Boolean, val act: () -> Unit)
+    data class PRow(
+        val label: String,
+        val detail: String? = null,
+        val checked: Boolean = false,
+        val header: Boolean = false,
+        val closes: Boolean = true,
+        val act: (() -> Unit)? = null,
+    )
 
     val rows: List<PRow> = when (p) {
-        Panel.AUDIO -> (st?.audio ?: emptyList()).map { t: TrackInfo -> PRow(t.label, null, t.selected) { engine?.selectAudio(t.id) } }
-        Panel.SUBS -> listOf(PRow("Off", null, st?.subs?.none { it.selected } == true) { engine?.selectSub(null) }) +
-            (st?.subs ?: emptyList()).map { t -> PRow(t.label, null, t.selected) { engine?.selectSub(t.id) } }
-        Panel.INFO -> {
-            val other = if (engine?.choice == EngineChoice.MPV) "ExoPlayer" else "mpv"
-            listOf(
+        Panel.AUDIO -> (st?.audio ?: emptyList()).map { t: TrackInfo -> PRow(t.label, checked = t.selected) { engine?.selectAudio(t.id) } }
+        Panel.SUBS -> listOf(PRow("Off", checked = st?.subs?.none { it.selected } == true) { engine?.selectSub(null) }) +
+            (st?.subs ?: emptyList()).map { t -> PRow(t.label, checked = t.selected) { engine?.selectSub(t.id) } }
+        Panel.INFO -> buildList {
+            val mpv = engine?.choice == EngineChoice.MPV
+            val speed = st?.speed ?: 1f
+            add(PRow("Speed", header = true))
+            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { s ->
+                add(PRow(fmtSpeed(s), checked = kotlin.math.abs(speed - s) < 0.01f, closes = false) { engine?.setSpeed(s) })
+            }
+            add(PRow("Player", header = true))
+            add(
                 PRow(
-                    "Playing with ${if (engine?.choice == EngineChoice.MPV) "mpv" else "ExoPlayer"}",
-                    "Why: ${session.reason}" + (st?.videoFps?.takeIf { it > 0 }?.let { "  ·  %.3f fps".format(it) } ?: ""),
-                    true,
-                ) {},
-                PRow("Switch to $other", "Restarts at the same spot", false) { session.switchEngine() },
+                    "Playing with ${if (mpv) "mpv" else "ExoPlayer"}",
+                    "Why: ${session.reason}",
+                    checked = true,
+                    closes = false,
+                ),
             )
+            add(PRow("Switch to ${if (mpv) "ExoPlayer" else "mpv"}", "Restarts at the same spot") { session.switchEngine() })
+            session.info?.let { mi ->
+                add(PRow("File", header = true))
+                fileDetails(mi, st).forEach { (k, v) -> add(PRow(k, v, closes = false)) }
+            }
         }
     }
     val title = when (p) {
-        Panel.AUDIO -> "Audio"; Panel.SUBS -> "Subtitles"; Panel.INFO -> "Player"
+        Panel.AUDIO -> "Audio"; Panel.SUBS -> "Subtitles"; Panel.INFO -> "Playback"
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
         Column(
@@ -596,27 +951,66 @@ private fun SidePanel(p: Panel, session: PlaybackSession, st: PlayerState?, firs
         ) {
             Text(title, style = G.h2, modifier = Modifier.padding(start = 10.dp, bottom = 12.dp))
             if (rows.isEmpty()) Text("Nothing to choose here.", style = G.small, modifier = Modifier.padding(10.dp))
-            val firstIndex = rows.indexOfFirst { it.checked }.coerceAtLeast(0)
+            val firstIndex = rows.indexOfFirst { it.checked && !it.header }.let { if (it >= 0) it else rows.indexOfFirst { !it.header } }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 itemsIndexed(rows) { i, r ->
-                    FocusBox(
-                        onClick = { r.act(); if (p != Panel.INFO || i == 1) close() },
-                        modifier = Modifier.fillMaxWidth().let { if (i == firstIndex) it.focusRequester(first) else it },
-                        shape = RoundedCornerShape(10.dp),
-                        focusScale = 1.02f,
-                        idleColor = Color.Transparent,
-                        focusColor = Color(0x2EFFFFFF),
-                        glow = false,
-                    ) { f ->
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                            Text((if (r.checked) "●  " else "     ") + r.label, style = G.label.copy(color = if (f || r.checked) G.text else G.dim), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            r.detail?.let { Text(it, style = G.small.copy(color = G.faint)) }
+                    if (r.header) {
+                        Text(
+                            r.label,
+                            style = G.small.copy(color = G.faint, fontWeight = FontWeight.Medium),
+                            modifier = Modifier.padding(start = 12.dp, top = if (i == 0) 0.dp else 14.dp, bottom = 2.dp),
+                        )
+                    } else {
+                        FocusBox(
+                            onClick = { r.act?.invoke(); if (r.closes && r.act != null) close() },
+                            modifier = Modifier.fillMaxWidth().let { if (i == firstIndex) it.focusRequester(first) else it },
+                            shape = RoundedCornerShape(10.dp),
+                            focusScale = 1.02f,
+                            idleColor = Color.Transparent,
+                            focusColor = Color(0x2EFFFFFF),
+                            glow = false,
+                        ) { f ->
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text((if (r.checked) "●  " else "     ") + r.label, style = G.label.copy(color = if (f || r.checked) G.text else G.dim), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                r.detail?.let { Text(it, style = G.small.copy(color = G.faint)) }
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+/** Label/value pairs for the File section of the playback panel. */
+private fun fileDetails(mi: com.mononymm.glasstv.plex.MediaInfo, st: PlayerState?): List<Pair<String, String>> = buildList {
+    val fps = st?.videoFps?.takeIf { it > 0 } ?: mi.frameRate
+    val video = listOfNotNull(
+        mi.height.takeIf { it > 0 }?.let { if (it >= 2000) "4K" else "${it}p" },
+        mi.videoCodec?.uppercase(),
+        if (mi.dolbyVision) "Dolby Vision" + (mi.dvProfile?.let { " P$it" } ?: "") else if (mi.hdr) "HDR" else null,
+        fps?.let { "%.3f fps".format(it) },
+    ).joinToString("  ·  ")
+    if (video.isNotBlank()) add("Video" to video)
+    val audio = st?.audio?.firstOrNull { it.selected }?.label
+        ?: listOfNotNull(mi.audioCodec?.uppercase(), mi.audioChannels?.let { channels(it) }).joinToString(" ")
+    if (audio.isNotBlank()) add("Audio" to audio)
+    add("Subtitles" to (st?.subs?.firstOrNull { it.selected }?.label ?: "Off"))
+    val file = listOfNotNull(
+        mi.container?.uppercase(),
+        mi.sizeBytes?.takeIf { it > 0 }?.let { fmtBytes(it) },
+        mi.bitrateKbps?.let { if (it >= 1000) "%.1f Mbps".format(it / 1000f) else "$it kbps" },
+    ).joinToString("  ·  ")
+    if (file.isNotBlank()) add("File" to file)
+}
+
+private fun channels(n: Int): String = when (n) {
+    1 -> "Mono"; 2 -> "Stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "$n ch"
+}
+
+private fun fmtBytes(bytes: Long): String {
+    val gb = bytes / 1_073_741_824.0
+    return if (gb >= 1) "%.2f GB".format(gb) else "%.0f MB".format(bytes / 1_048_576.0)
 }
 
 @Composable

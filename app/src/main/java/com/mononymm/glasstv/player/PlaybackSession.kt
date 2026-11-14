@@ -43,6 +43,9 @@ class PlaybackSession(
         private set
     var next by mutableStateOf<Item?>(null)
         private set
+    /** Episodes of the current season (empty for movies and single files). */
+    var playlist by mutableStateOf<List<Item>>(emptyList())
+        private set
     /** Bumps whenever the engine (and so the video view) is replaced. */
     var generation by mutableStateOf(0)
         private set
@@ -76,6 +79,11 @@ class PlaybackSession(
             startEngine(pick.engine, mi, start)
             if (mi.item.isEpisode) {
                 next = runCatching { plex.nextEpisode(mi.item) }.getOrNull()
+                val season = mi.item.seasonKey
+                playlist = if (season == null) emptyList()
+                else runCatching { plex.children(season) }.getOrNull()?.filter { it.isEpisode } ?: emptyList()
+            } else {
+                playlist = emptyList()
             }
         }
     }

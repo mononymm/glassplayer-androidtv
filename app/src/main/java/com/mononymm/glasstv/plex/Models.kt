@@ -121,7 +121,7 @@ data class SubTrack(
     val styled get() = codec == "ass" || codec == "ssa"
 }
 
-data class Chapter(val startMs: Long, val title: String?)
+data class Chapter(val startMs: Long, val title: String?, val thumb: String? = null)
 
 /** Everything needed to decide which engine plays a file and to start it. */
 data class MediaInfo(
@@ -139,6 +139,8 @@ data class MediaInfo(
     val subs: List<SubTrack>,
     val chapters: List<Chapter>,
     val bitrateKbps: Int?,
+    val sizeBytes: Long? = null,
+    val audioChannels: Int? = null,
 ) {
     val hasStyledSubs get() = subs.any { it.styled }
 
@@ -175,7 +177,7 @@ data class MediaInfo(
                 )
             }
             val chapters = o.arr("Chapter").map {
-                Chapter(it.long("startTimeOffset") ?: 0, it.str("tag"))
+                Chapter(it.long("startTimeOffset") ?: 0, it.str("tag"), it.str("thumb"))
             }.sortedBy { it.startMs }
             return MediaInfo(
                 item = item,
@@ -192,6 +194,8 @@ data class MediaInfo(
                 subs = subs,
                 chapters = chapters,
                 bitrateKbps = media.int("bitrate"),
+                sizeBytes = part.long("size"),
+                audioChannels = audio?.int("channels") ?: media.int("audioChannels"),
             )
         }
     }

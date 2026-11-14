@@ -101,6 +101,7 @@ fun FocusBox(
     focusColor: Color = G.glassHi,
     glow: Boolean = true,
     onFocus: (() -> Unit)? = null,
+    focusEnabled: Boolean = true,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     val src = remember { MutableInteractionSource() }
@@ -142,7 +143,7 @@ fun FocusBox(
                     else -> false
                 }
             }
-            .focusable(interactionSource = src),
+            .focusable(enabled = focusEnabled, interactionSource = src),
     ) { content(focused) }
 }
 
