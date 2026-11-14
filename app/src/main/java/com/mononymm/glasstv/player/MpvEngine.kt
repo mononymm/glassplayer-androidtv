@@ -143,13 +143,14 @@ class MpvEngine(private val ctx: Context, private val prefs: Prefs) : Engine, MP
         state.buffering = true
         val hdr = req.headers.entries.joinToString(",") { "${it.key}: ${it.value}" }
         m.setOptionString("http-header-fields", hdr)
-        m.setPropertyString("start", if (req.startMs > 0) String.format(Locale.US, "%.3f", req.startMs / 1000.0) else "none")
-        m.command(arrayOf("loadfile", req.url, "replace"))
+        // Per-file start option (mpv 0.38+: url, flags, index, options).
+        val opts = if (req.startMs > 0) "start=" + String.format(Locale.US, "%.3f", req.startMs / 1000.0) else ""
+        if (opts.isEmpty()) m.command(arrayOf("loadfile", req.url, "replace"))
+        else m.command(arrayOf("loadfile", req.url, "replace", "-1", opts))
     }
 
     private fun onFileLoaded() {
         val m = mpv ?: return
-        m.setPropertyString("start", "none")
         loaded?.externalSubs?.forEach { s ->
             m.command(arrayOf("sub-add", s.url, "auto", s.label, s.language ?: ""))
         }

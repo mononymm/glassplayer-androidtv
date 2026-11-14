@@ -50,6 +50,7 @@ class PlaybackSession(
     private var scrobbled = false
     private var reporter: Job? = null
     private var lastPaused: Boolean? = null
+    private var startedAt = 0L
 
     init {
         open(startItem, if (fromStart) 0L else -1L, null)
@@ -93,6 +94,7 @@ class PlaybackSession(
         val subs = mi.subs.filter { it.external && it.key != null }.map {
             ExternalSub(plex.subtitleUrl(it.key!!), it.codec, it.title, it.language)
         }
+        startedAt = startMs
         e.load(LoadRequest(plex.mediaUrl(mi.partKey), startMs, plex.mediaHeaders(), mi, subs))
         startReporting(e)
     }
@@ -106,6 +108,10 @@ class PlaybackSession(
                 delay(1000)
                 val s = e.state
                 if (s.durationMs <= 0) continue
+                // Don't tell Plex anything until the player has actually reached the resume
+                // point, or an early "0:00" report would wipe the saved position.
+                if (s.buffering && s.positionMs == 0L) continue
+                if (startedAt > 5000 && s.positionMs < 1000) continue
                 ticks++
                 val pausedChanged = lastPaused != s.paused
                 if (pausedChanged || ticks % 10 == 0) {
@@ -146,7 +152,7 @@ class PlaybackSession(
         val e = engine ?: return
         val s = e.state
         val it = item
-        if (s.durationMs > 0) {
+        if (s.durationMs > 0 && !(startedAt > 5000 && s.positionMs < 1000)) {
             CoroutineScope(Dispatchers.IO).launch {
                 withContext(NonCancellable) { runCatching { plex.timeline(it, "stopped", s.positionMs, s.durationMs) } }
             }
