@@ -30,10 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -58,10 +57,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Top strip: logo at the left inset, date and time at the right inset. Nothing focusable. */
+/** Left/right inset for browse content; the icon rail lives in the left one. */
+val EDGE = 80.dp
+private val RAIL_COLLAPSED = 64.dp
+private val RAIL_OPEN = 248.dp
+
+/** Top strip: logo over the rail column, date and time mirrored at the right. Nothing focusable. */
 @Composable
 fun Header(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 4.dp).height(40.dp)) {
+    Box(modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 4.dp).height(40.dp)) {
         Logo(Modifier.align(Alignment.CenterStart).size(28.dp))
         Clock(Modifier.align(Alignment.CenterEnd))
     }
@@ -94,25 +98,21 @@ private fun iconFor(s: Section) = when (s.type) {
     else -> RailIcon.OTHER
 }
 
-private val RAIL_COLLAPSED = 48.dp
-private val RAIL_OPEN = 248.dp
-
 /**
- * Icons in the left margin; it opens into a side bar when it takes focus (Left from the
- * first tile). Hold OK on a library to move it: Up/Down, then OK.
+ * Icons in the left margin. The page opens it (Left with nothing further left); while
+ * closed its items can't take focus, so the page never wanders into it. Right or Back
+ * closes it and returns focus to where it was. Hold OK on a library to move it.
  */
 @Composable
-fun SideRail(selected: String) {
+fun SideRail(selected: String, open: Boolean, close: () -> Unit) {
     val app = LocalApp.current
     LaunchedEffect(Unit) {
         if (app.sections.isEmpty()) runCatching { app.sections = app.plex.sections() }
     }
-    var open by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<String?>(null) }
     var armed by remember { mutableStateOf(false) }
     val selectedReq = remember { FocusRequester() }
     val width by animateDpAsState(if (open) RAIL_OPEN else RAIL_COLLAPSED, tween(200), label = "rail")
-    // Entering the rail lands on the current page, not whichever icon was nearest.
     LaunchedEffect(open) { if (open) selectedReq.focusSoon() else moving = null }
 
     Box(Modifier.fillMaxSize()) {
@@ -120,17 +120,18 @@ fun SideRail(selected: String) {
         Column(
             Modifier.fillMaxHeight().width(width)
                 .background(if (open) Color(0xFF0E0E13) else Color.Transparent)
-                .let { if (open) it.border(1.dp, Color(0x14FFFFFF)) else it }
-                // Only Left (from the first tile) opens the rail; Up/Down from the page never wander in.
-                .focusProperties {
-                    onEnter = { if (requestedFocusDirection != FocusDirection.Left) cancelFocusChange() }
-                }
-                .focusGroup()
-                .onFocusChanged { open = it.hasFocus }
                 .onPreviewKeyEvent { ev ->
-                    val m = moving ?: return@onPreviewKeyEvent false
+                    if (!open) return@onPreviewKeyEvent false
                     val k = ev.nativeKeyEvent.keyCode
                     val down = ev.type == KeyEventType.KeyDown
+                    val m = moving
+                    if (m == null) {
+                        return@onPreviewKeyEvent when (k) {
+                            AK.KEYCODE_DPAD_RIGHT -> { if (down) close(); true }
+                            AK.KEYCODE_BACK, AK.KEYCODE_ESCAPE -> { if (!down) close(); true }
+                            else -> false
+                        }
+                    }
                     if (down) armed = true
                     when (k) {
                         AK.KEYCODE_DPAD_UP -> { if (down) app.moveSection(m, -1); true }
@@ -145,45 +146,46 @@ fun SideRail(selected: String) {
                     }
                 },
         ) {
-            // Logo row (open only; when collapsed the page header shows the logo here).
-            Row(Modifier.padding(start = 48.dp, top = 20.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Logo row (open only; when closed the page header shows the logo in this spot).
+            Row(Modifier.padding(start = 18.dp, top = 20.dp).height(40.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (open) {
                     Logo(Modifier.size(28.dp))
                     Spacer(Modifier.width(12.dp))
                     Text("Glass", style = G.h2)
                 }
             }
-            Spacer(Modifier.height(66.dp))
-            RailItem(RailIcon.HOME, "Home", selected == "home", open, false, if (selected == "home") selectedReq else null,
-                onClick = { if (selected != "home") app.replaceAll(Screen.Home) })
-            app.orderedSections.forEach { s ->
-                key(s.key) {
-                    RailItem(iconFor(s), s.title, selected == s.key, open, moving == s.key, if (selected == s.key) selectedReq else null,
-                        onClick = {
-                            if (selected != s.key) {
-                                app.replaceAll(Screen.Home)
-                                app.go(Screen.Library(s))
-                            }
-                        },
-                        onLongClick = { moving = s.key; armed = false })
+            // Libraries scroll if there are more than fit; Search and Settings stay pinned below.
+            Column(Modifier.weight(1f).padding(top = 40.dp).verticalScroll(rememberScrollState())) {
+                RailItem(RailIcon.HOME, "Home", selected == "home", open, false, if (selected == "home") selectedReq else null,
+                    onClick = { if (selected != "home") app.replaceAll(Screen.Home) else close() })
+                app.orderedSections.forEach { s ->
+                    key(s.key) {
+                        RailItem(iconFor(s), s.title, selected == s.key, open, moving == s.key, if (selected == s.key) selectedReq else null,
+                            onClick = {
+                                if (selected != s.key) {
+                                    app.replaceAll(Screen.Home)
+                                    app.go(Screen.Library(s))
+                                } else close()
+                            },
+                            onLongClick = { moving = s.key; armed = false })
+                    }
+                }
+                if (open) {
+                    Text(
+                        if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library to move it",
+                        style = G.small.copy(color = if (moving != null) G.red else G.faint, fontSize = 11.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 24.dp, top = 6.dp, bottom = 6.dp),
+                    )
                 }
             }
-            if (open) {
-                Text(
-                    if (moving != null) "↑ ↓ to move, OK when done" else "Hold OK on a library to move it",
-                    style = G.small.copy(color = if (moving != null) G.red else G.faint, fontSize = 11.sp),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 24.dp, top = 8.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
             if (open) Box(Modifier.padding(horizontal = 24.dp).fillMaxWidth().height(1.dp).background(Color(0x1EFFFFFF)))
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
             RailItem(RailIcon.SEARCH, "Search", selected == "search", open, false, if (selected == "search") selectedReq else null,
-                onClick = { if (selected != "search") app.go(Screen.Search) })
+                onClick = { if (selected != "search") app.go(Screen.Search) else close() })
             RailItem(RailIcon.SETTINGS, "Settings", selected == "settings", open, false, if (selected == "settings") selectedReq else null,
-                onClick = { if (selected != "settings") app.go(Screen.Settings) })
-            Spacer(Modifier.height(48.dp))
+                onClick = { if (selected != "settings") app.go(Screen.Settings) else close() })
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -199,9 +201,9 @@ private fun RailItem(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val mod = Modifier.padding(start = if (open) 10.dp else 6.dp, end = if (open) 14.dp else 6.dp, top = 4.dp, bottom = 4.dp)
+    val mod = Modifier.padding(start = if (open) 10.dp else 12.dp, end = if (open) 14.dp else 12.dp, top = 3.dp, bottom = 3.dp)
         .height(38.dp)
-        .let { if (open) it.fillMaxWidth() else it.width(36.dp) }
+        .let { if (open) it.fillMaxWidth() else it.width(40.dp) }
         .let { if (req != null) it.focusRequester(req) else it }
     FocusBox(
         onClick = onClick,
@@ -213,6 +215,7 @@ private fun RailItem(
         focusColor = if (moving) Color(0x40E8333F) else Color(0xF2F4F4F6),
         idleRim = if (moving) G.red else Color.Transparent,
         glow = false,
+        focusEnabled = open,
     ) { f ->
         val c = when {
             f && !moving -> Color(0xFF0B0B0F)

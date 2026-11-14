@@ -62,7 +62,7 @@ fun LibraryScreen(section: Section) {
     BrowseFrame(tab = section.key, hero = hero, heroHeight = 150) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.padding(start = 48.dp, bottom = 10.dp),
+                Modifier.padding(start = EDGE, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -81,7 +81,7 @@ fun LibraryScreen(section: Section) {
             val list = items ?: emptyList()
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(POSTER_W.dp),
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 48.dp),
+                contentPadding = PaddingValues(start = EDGE, end = EDGE, top = 18.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 state = grid,

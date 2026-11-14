@@ -68,14 +68,14 @@ fun SearchScreen() {
                     unfocusedTextColor = G.text,
                 ),
                 shape = G.pillShape,
-                modifier = Modifier.padding(start = 48.dp, bottom = 12.dp).width(520.dp).focusRequester(field),
+                modifier = Modifier.padding(start = EDGE, bottom = 12.dp).width(520.dp).focusRequester(field),
             )
-            if (busy && results.isEmpty()) Text("Searching…", style = G.small, modifier = Modifier.padding(start = 56.dp))
-            else if (!busy && query.isNotBlank() && results.isEmpty()) Text("No results", style = G.small, modifier = Modifier.padding(start = 56.dp))
+            if (busy && results.isEmpty()) Text("Searching…", style = G.small, modifier = Modifier.padding(start = EDGE + 8.dp))
+            else if (!busy && query.isNotBlank() && results.isEmpty()) Text("No results", style = G.small, modifier = Modifier.padding(start = EDGE + 8.dp))
             LazyVerticalGrid(
                 state = grid,
                 columns = GridCells.Adaptive(POSTER_W.dp),
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 48.dp),
+                contentPadding = PaddingValues(start = EDGE, end = EDGE, top = 18.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.fillMaxSize(),

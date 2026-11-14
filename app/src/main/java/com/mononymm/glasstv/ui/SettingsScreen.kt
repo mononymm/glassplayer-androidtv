@@ -40,7 +40,7 @@ fun SettingsScreen() {
     BrowseFrame(tab = "settings", hero = null, heroHeight = 0) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 56.dp, end = 56.dp, top = 16.dp, bottom = 48.dp),
+            contentPadding = PaddingValues(start = EDGE + 8.dp, end = EDGE + 8.dp, top = 16.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item { Header("Server") }

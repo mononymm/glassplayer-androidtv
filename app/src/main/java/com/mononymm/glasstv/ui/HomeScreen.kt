@@ -9,6 +9,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -104,7 +108,7 @@ fun HomeScreen() {
 
     BrowseFrame(tab = "home", hero = hero) {
         if (error != null && rows.isEmpty()) {
-            Column(Modifier.padding(48.dp)) {
+            Column(Modifier.padding(EDGE)) {
                 Text(error ?: "", style = G.body)
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -163,9 +167,13 @@ fun HomeScreen() {
  * Shared layout for browse screens: tab bar on top, the focused title's backdrop
  * and info in the upper area, and [content] below.
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 150, content: @Composable () -> Unit) {
     val app = LocalApp.current
+    var railOpen by remember { mutableStateOf(false) }
+    val contentReq = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     Box(Modifier.fillMaxSize()) {
         Crossfade(hero?.let { it.backdrop ?: it.thumb }, animationSpec = tween(400), label = "backdrop") { art ->
             Box(Modifier.fillMaxSize()) {
@@ -184,7 +192,18 @@ fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 150, content: @Compo
         Column(Modifier.fillMaxSize()) {
             Header()
             if (heroHeight > 0) HeroInfo(hero, Modifier.height(heroHeight.dp))
-            Box(Modifier.weight(1f).clipToBounds()) {
+            Box(
+                Modifier.weight(1f).clipToBounds()
+                    // Remembers the focused tile, so closing the side bar returns to it.
+                    .focusRequester(contentReq).focusRestorer()
+                    // Left with nothing further left opens the side bar.
+                    .onKeyEvent { ev ->
+                        if (ev.nativeKeyEvent.keyCode != AK.KEYCODE_DPAD_LEFT || railOpen) return@onKeyEvent false
+                        if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                        if (!focusManager.moveFocus(FocusDirection.Left)) railOpen = true
+                        true
+                    },
+            ) {
                 content()
                 // The row below fades into the bottom edge instead of being cut off hard.
                 Box(
@@ -193,14 +212,17 @@ fun BrowseFrame(tab: String, hero: Item?, heroHeight: Int = 150, content: @Compo
                 )
             }
         }
-        SideRail(tab)
+        SideRail(tab, railOpen) {
+            railOpen = false
+            contentReq.requestFocus()
+        }
     }
 }
 
 @Composable
 fun HeroInfo(item: Item?, modifier: Modifier = Modifier) {
     val app = LocalApp.current
-    Column(modifier.padding(start = 48.dp, top = 8.dp).width(520.dp), verticalArrangement = Arrangement.Top) {
+    Column(modifier.padding(start = EDGE, top = 8.dp).width(520.dp), verticalArrangement = Arrangement.Top) {
         if (item == null) return@Column
         val logo = item.logo
         if (logo != null) {

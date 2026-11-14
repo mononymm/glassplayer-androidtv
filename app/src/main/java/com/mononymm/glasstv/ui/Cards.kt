@@ -139,12 +139,12 @@ fun ItemRow(
     onFocus: (Item) -> Unit,
 ) {
     Column(Modifier.padding(bottom = 4.dp)) {
-        Row(Modifier.padding(start = 48.dp), verticalAlignment = Alignment.Bottom) {
+        Row(Modifier.padding(start = EDGE), verticalAlignment = Alignment.Bottom) {
             Text(title, style = G.h2)
             note?.let { Text("   $it", style = G.small.copy(color = G.red), modifier = Modifier.padding(bottom = 2.dp)) }
         }
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 18.dp),
+            contentPadding = PaddingValues(horizontal = EDGE, vertical = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 14.dp),
         ) {
             items(items, key = { it.ratingKey }) {
