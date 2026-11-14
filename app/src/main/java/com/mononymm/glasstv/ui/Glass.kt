@@ -292,7 +292,7 @@ private fun Modifier.matchParentSizeCompat(): Modifier = this.fillMaxWidth().fil
 
 /** Request focus once the target is laid out (lazy lists compose a frame later). */
 suspend fun androidx.compose.ui.focus.FocusRequester.focusSoon() {
-    repeat(10) {
+    repeat(25) {
         kotlinx.coroutines.delay(40)
         if (runCatching { requestFocus() }.isSuccess) return
     }

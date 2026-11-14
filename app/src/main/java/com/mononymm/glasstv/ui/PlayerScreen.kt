@@ -182,8 +182,12 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     }
     LaunchedEffect(peek, lastInput) { if (peek) { delay(1800); peek = false } }
     LaunchedEffect(toastAt) { if (toast != null) { delay(900); toast = null } }
-    LaunchedEffect(controls) {
-        if (controls) playBtn.focusSoon() else root.focusSoon()
+    // Focus the play button once it exists. At start-up the controls show before the file has
+    // loaded (no play button yet), so until then the screen itself holds focus and handles OK.
+    val ready = st != null
+    LaunchedEffect(controls, ready) {
+        if (controls && ready && panel == null) (if (level > 0) tileFirst else playBtn).focusSoon()
+        else root.focusSoon()
     }
     LaunchedEffect(panel) {
         speedOpen = false
@@ -324,7 +328,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { globalKeys(it) }
-            .onKeyEvent { if (!controls) rootKeys(it) else if (it.type == KeyEventType.KeyDown) { touch(); false } else false }
+            .onKeyEvent { if (!controls || st == null) rootKeys(it) else if (it.type == KeyEventType.KeyDown) { touch(); false } else false }
             .focusRequester(root)
             .focusable(),
     ) {
