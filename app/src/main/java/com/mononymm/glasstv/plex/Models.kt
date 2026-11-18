@@ -50,6 +50,8 @@ data class Item(
     val lastViewedAt: Long = 0,
     val aired: String? = null,
     val titleSort: String? = null,
+    /** The file's part key; a "S01E01-E02" file shows up as two episodes sharing it. */
+    val partKey: String? = null,
 ) {
     val isEpisode get() = type == "episode"
     val isShow get() = type == "show"
@@ -105,6 +107,7 @@ data class Item(
                 lastViewedAt = o.long("lastViewedAt") ?: 0,
                 aired = o.str("originallyAvailableAt"),
                 titleSort = o.str("titleSort"),
+                partKey = o.arr("Media").optJSONObject(0)?.arr("Part")?.optJSONObject(0)?.str("key"),
             )
         }
     }

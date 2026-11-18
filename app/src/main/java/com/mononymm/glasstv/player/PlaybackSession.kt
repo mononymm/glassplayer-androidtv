@@ -130,7 +130,10 @@ class PlaybackSession(
                 if (!scrobbled && s.positionMs > s.durationMs * 0.9) {
                     scrobbled = true
                     val k = item.ratingKey
-                    scope.launch { plex.markWatched(k) }
+                    // The other episodes in this file were watched too.
+                    val file = playlist.firstOrNull { it.ratingKey == k }?.partKey ?: item.partKey
+                    val same = if (file == null) emptyList() else playlist.filter { it.partKey == file && it.ratingKey != k }.map { it.ratingKey }
+                    scope.launch { plex.markWatched(k); same.forEach { plex.markWatched(it) } }
                 }
             }
         }
