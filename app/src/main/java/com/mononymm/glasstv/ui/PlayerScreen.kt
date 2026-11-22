@@ -199,6 +199,50 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         if (controls && panel == null) (if (level > 0) tileFirst else playBtn).focusSoon()
     }
     LaunchedEffect(controls) { while (controls) { now = System.currentTimeMillis(); delay(10_000) } }
+
+    // A media session, so Bluetooth headphone buttons (and other media controllers) reach the
+    // player: Android sends those to the active session, not to the app on screen.
+    val mediaCtx = LocalContext.current
+    val mediaSession = remember {
+        android.media.session.MediaSession(mediaCtx, "Glass").apply {
+            setCallback(object : android.media.session.MediaSession.Callback() {
+                override fun onPlay() { session.engine?.setPaused(false) }
+                override fun onPause() { session.engine?.setPaused(true) }
+                override fun onFastForward() { session.engine?.let { it.seekTo(it.state.positionMs + 30_000) } }
+                override fun onRewind() { session.engine?.let { it.seekTo((it.state.positionMs - 10_000).coerceAtLeast(0)) } }
+                override fun onSeekTo(pos: Long) { session.engine?.seekTo(pos) }
+            })
+            isActive = true
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaSession.isActive = false
+            mediaSession.release()
+        }
+    }
+    LaunchedEffect(st?.paused, st?.durationMs) {
+        val s = st ?: return@LaunchedEffect
+        mediaSession.setPlaybackState(
+            android.media.session.PlaybackState.Builder()
+                .setActions(
+                    android.media.session.PlaybackState.ACTION_PLAY or android.media.session.PlaybackState.ACTION_PAUSE or
+                        android.media.session.PlaybackState.ACTION_PLAY_PAUSE or android.media.session.PlaybackState.ACTION_FAST_FORWARD or
+                        android.media.session.PlaybackState.ACTION_REWIND or android.media.session.PlaybackState.ACTION_SEEK_TO,
+                )
+                .setState(
+                    if (s.paused) android.media.session.PlaybackState.STATE_PAUSED else android.media.session.PlaybackState.STATE_PLAYING,
+                    s.positionMs, if (s.paused) 0f else s.speed,
+                )
+                .build(),
+        )
+        mediaSession.setMetadata(
+            android.media.MediaMetadata.Builder()
+                .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, session.item.title)
+                .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, s.durationMs)
+                .build(),
+        )
+    }
     // Commit a scrub shortly after the last press.
     LaunchedEffect(scrubAt) {
         val target = scrubMs ?: return@LaunchedEffect
