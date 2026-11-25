@@ -176,8 +176,8 @@ class Plex(val prefs: Prefs, private val version: String) {
         val i = all.indexOfFirst { it.ratingKey == ep.ratingKey }
         if (i < 0) return null
         // Skip episodes stored in the same file (a "S01E01-E02" file is two episodes in Plex).
-        val file = all[i].partKey ?: ep.partKey
-        return all.drop(i + 1).firstOrNull { file == null || it.partKey != file }
+        val file = all[i].filePath ?: ep.filePath
+        return all.drop(i + 1).firstOrNull { file == null || it.filePath != file }
     }
 
     // ---------- subtitle search (Plex's own, backed by OpenSubtitles) ----------
