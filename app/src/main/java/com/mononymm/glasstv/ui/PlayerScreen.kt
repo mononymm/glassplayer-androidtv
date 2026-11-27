@@ -115,7 +115,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     var boostFrom by remember { mutableStateOf(1f) }
     var countdown by remember { mutableIntStateOf(-1) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // 0 = buttons, 1 = playlist row, 2 = chapters row.
+    // 0 = buttons, 1 = chapters row, 2 = playlist row.
     var level by remember { mutableIntStateOf(0) }
     var speedOpen by remember { mutableStateOf(false) }
     var subSearch by remember { mutableStateOf(false) }
@@ -167,7 +167,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         level = 0
     }
     fun levelUp() {
-        level = if (level == 2 && hasPlaylist) 1 else 0
+        level = if (level == 2 && hasChapters) 1 else 0
     }
     fun exit() {
         if (!app.back()) app.replaceAll(Screen.Home)
@@ -340,8 +340,8 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
                     if (level == 0 && !rowFocused) return false
                     if (down && k.repeatCount == 0) {
                         level = when (level) {
-                            0 -> if (hasPlaylist) 1 else if (hasChapters) 2 else 0
-                            1 -> if (hasChapters) 2 else 1
+                            0 -> if (hasChapters) 1 else if (hasPlaylist) 2 else 0
+                            1 -> if (hasPlaylist) 2 else 1
                             else -> 2
                         }
                     }
@@ -588,7 +588,7 @@ private fun Controls(
     }
 }
 
-/** The row under the controls: the season's episodes (level 1) or the chapters (level 2). */
+/** The row under the controls: the chapters (level 1) or the season's episodes (level 2). */
 @Composable
 private fun LowerPanel(
     level: Int,
@@ -613,33 +613,8 @@ private fun LowerPanel(
             .padding(top = 22.dp),
     ) {
         if (level == 2) {
-            Text(if (hasPlaylist) "Playlist" else " ", style = faded, modifier = Modifier.padding(start = inset))
+            Text(if (hasChapters) "Chapters" else " ", style = faded, modifier = Modifier.padding(start = inset))
             Spacer(Modifier.height(2.dp))
-            Text("Chapters", style = G.h2, modifier = Modifier.padding(start = inset))
-            val chapters = session.info?.chapters ?: emptyList()
-            val pos = st.positionMs
-            val cur = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
-            TileRow(chapters.size, cur, first) { i, mod, onFocus ->
-                val c = chapters[i]
-                val end = chapters.getOrNull(i + 1)?.startMs ?: st.durationMs
-                val len = (end - c.startMs).coerceAtLeast(0)
-                val isCur = i == cur
-                PlayerTile(
-                    image = c.thumb?.let { app.plex.image(it, 496, 280) },
-                    plainText = fmt(c.startMs),
-                    tag = if (c.thumb != null) fmt(c.startMs) else null,
-                    title = c.title?.takeIf { it.isNotBlank() } ?: "Chapter ${i + 1}",
-                    sub = if (isCur) "${shortDur(pos - c.startMs)} in" else shortDur(len),
-                    current = isCur,
-                    currentLabel = "Now",
-                    watched = false,
-                    progress = if (isCur && len > 0) ((pos - c.startMs).toFloat() / len) else null,
-                    onClick = { onPickChapter(c) },
-                    onFocus = onFocus,
-                    modifier = mod,
-                )
-            }
-        } else {
             Row(Modifier.padding(start = inset), verticalAlignment = Alignment.Bottom) {
                 Text("Playlist", style = G.h2)
                 session.item.seasonIndex?.let {
@@ -675,7 +650,32 @@ private fun LowerPanel(
                     modifier = mod,
                 )
             }
-            if (hasChapters) Text("Chapters", style = faded, modifier = Modifier.padding(start = inset))
+        } else {
+            Text("Chapters", style = G.h2, modifier = Modifier.padding(start = inset))
+            val chapters = session.info?.chapters ?: emptyList()
+            val pos = st.positionMs
+            val cur = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
+            TileRow(chapters.size, cur, first) { i, mod, onFocus ->
+                val c = chapters[i]
+                val end = chapters.getOrNull(i + 1)?.startMs ?: st.durationMs
+                val len = (end - c.startMs).coerceAtLeast(0)
+                val isCur = i == cur
+                PlayerTile(
+                    image = c.thumb?.let { app.plex.image(it, 496, 280) },
+                    plainText = fmt(c.startMs),
+                    tag = if (c.thumb != null) fmt(c.startMs) else null,
+                    title = c.title?.takeIf { it.isNotBlank() } ?: "Chapter ${i + 1}",
+                    sub = if (isCur) "${shortDur(pos - c.startMs)} in" else shortDur(len),
+                    current = isCur,
+                    currentLabel = "Now",
+                    watched = false,
+                    progress = if (isCur && len > 0) ((pos - c.startMs).toFloat() / len) else null,
+                    onClick = { onPickChapter(c) },
+                    onFocus = onFocus,
+                    modifier = mod,
+                )
+            }
+            if (hasPlaylist) Text("Playlist", style = faded, modifier = Modifier.padding(start = inset))
         }
     }
 }
