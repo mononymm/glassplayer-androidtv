@@ -113,6 +113,8 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
     var toastAt by remember { mutableLongStateOf(0L) }
     var boosting by remember { mutableStateOf(false) }
     var boostFrom by remember { mutableStateOf(1f) }
+    var boostWasPaused by remember { mutableStateOf(false) }
+    var playFocused by remember { mutableStateOf(false) }
     var countdown by remember { mutableIntStateOf(-1) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     // 0 = buttons, 1 = chapters row, 2 = playlist row.
@@ -155,6 +157,27 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         val s = st ?: return
         engine?.setPaused(!s.paused)
         touch()
+    }
+    /** Hold select (or Right): play at 2x while held. A paused video plays for the hold, then pauses again. */
+    fun startBoost() {
+        val s = st ?: return
+        if (boosting) return
+        boosting = true
+        boostFrom = s.speed
+        boostWasPaused = s.paused
+        if (s.paused) engine?.setPaused(false)
+        engine?.setSpeed(2f)
+        showToast("2×")
+        peek = true
+    }
+    /** Ends a hold; false when there was none (so the release counts as a press). */
+    fun endBoost(): Boolean {
+        if (!boosting) return false
+        engine?.setSpeed(boostFrom)
+        if (boostWasPaused) engine?.setPaused(true)
+        boosting = false
+        showToast(fmtSpeed(boostFrom))
+        return true
     }
     fun showControls() {
         controls = true
@@ -273,7 +296,9 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
         val up = ev.type == KeyEventType.KeyUp
         when (k.keyCode) {
             AK.KEYCODE_DPAD_CENTER, AK.KEYCODE_ENTER, AK.KEYCODE_NUMPAD_ENTER -> {
-                if (up) { togglePause(); showControls() }
+                // A press pauses/plays; holding plays at 2x until released.
+                if (down && k.repeatCount >= 2) startBoost()
+                if (up && !endBoost()) { togglePause(); showControls() }
                 return true
             }
             AK.KEYCODE_DPAD_LEFT -> {
@@ -281,17 +306,8 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
                 return true
             }
             AK.KEYCODE_DPAD_RIGHT -> {
-                if (down && k.repeatCount >= 2 && !boosting && st != null) {
-                    boosting = true
-                    boostFrom = st.speed
-                    engine?.setSpeed(2f)
-                    showToast("2×")
-                    peek = true
-                }
-                if (up) {
-                    if (boosting) { engine?.setSpeed(boostFrom); boosting = false; showToast("${fmtSpeed(boostFrom)}") }
-                    else seekBy(30_000)
-                }
+                if (down && k.repeatCount >= 2) startBoost()
+                if (up && !endBoost()) seekBy(30_000)
                 return true
             }
             AK.KEYCODE_DPAD_UP, AK.KEYCODE_DPAD_DOWN -> {
@@ -322,6 +338,15 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
                 if (controls) { if (up) { if (level > 0) levelUp() else hideControls() }; return true }
                 if (up) exit()
                 return true
+            }
+            AK.KEYCODE_DPAD_CENTER, AK.KEYCODE_ENTER, AK.KEYCODE_NUMPAD_ENTER -> {
+                // Select on the play button: a press pauses/plays, holding plays at 2x.
+                if (controls && panel == null && level == 0 && playFocused && countdown <= 0) {
+                    val down = ev.type == KeyEventType.KeyDown
+                    if (down && k.repeatCount >= 2) startBoost()
+                    if (up && !endBoost()) togglePause()
+                    return true
+                }
             }
             AK.KEYCODE_MEDIA_PLAY_PAUSE -> { if (up) togglePause(); return true }
             AK.KEYCODE_MEDIA_PLAY -> { if (up) engine?.setPaused(false); return true }
@@ -440,6 +465,7 @@ fun PlayerScreen(item: Item, fromStart: Boolean) {
                 tileFirst = tileFirst,
                 onRowFocus = { rowFocused = it },
                 onSeekFocus = { seekFocused = it },
+                onPlayFocus = { playFocused = it },
                 onNextEpisode = { session.next?.let { session.play(it); hideControls() } },
                 onPickEpisode = { ep ->
                     if (ep.ratingKey == session.item.ratingKey) level = 0
@@ -480,6 +506,7 @@ private fun Controls(
     tileFirst: FocusRequester,
     onRowFocus: (Boolean) -> Unit,
     onSeekFocus: (Boolean) -> Unit,
+    onPlayFocus: (Boolean) -> Unit,
     onNextEpisode: () -> Unit,
     onPickEpisode: (Item) -> Unit,
     onPickChapter: (Chapter) -> Unit,
@@ -565,7 +592,7 @@ private fun Controls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     GlassIconButton({ onChapter(-1) }, size = 42.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = true) }
-                    BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn), enabled = live)
+                    BigPlayButton(st.paused, onToggle, Modifier.focusRequester(playBtn).onFocusChanged { onPlayFocus(it.isFocused) }, enabled = live)
                     GlassIconButton({ onChapter(1) }, size = 42.dp, dim = !hasChapters, enabled = live) { c -> ChapterIcon(c, back = false) }
                 }
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
